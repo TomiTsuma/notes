@@ -55,6 +55,7 @@ export interface NoteFile {
   type: string;
   folderId: string | null;
   dataUrl?: string; // Securely storing the PDF natively encoded in base 64 as standard state flow
+  projectId?: string | null; // Associated project ID
 }
 
 export interface SmartNoteSection {
@@ -66,6 +67,50 @@ interface DocumentAnnotations {
   strokes: Stroke[];
   textElements: TextElement[];
   smartNotes?: Record<string, SmartNoteSection>;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  description: string;
+  color: string;
+  createdAt: string;
+}
+
+export interface KanbanTask {
+  id: string;
+  projectId: string;
+  title: string;
+  description: string;
+  status: 'todo' | 'inprogress' | 'review' | 'done';
+  priority: 'low' | 'medium' | 'high';
+  dueDate?: string;
+  createdAt: string;
+}
+
+export interface CalendarEvent {
+  id: string;
+  title: string;
+  description: string;
+  date: string; // YYYY-MM-DD
+  startTime: string; // HH:MM
+  endTime: string; // HH:MM
+  projectId: string | null;
+  createdAt: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: string;
+}
+
+export interface UserStreak {
+  streakCount: number;
+  lastActiveDate: string;
+  totalTasksCompleted: number;
+  totalNotesCreated: number;
 }
 
 interface AppState {
@@ -87,6 +132,16 @@ interface AppState {
 
   isRecording: boolean;
   showRightPanel: boolean;
+
+  // New Productivity Suite State
+  activeView: 'home' | 'projects' | 'kanban' | 'calendar' | 'canvas';
+  selectedProjectId: string | null;
+  currentBackground: string;
+  projects: Project[];
+  kanbanTasks: KanbanTask[];
+  calendarEvents: CalendarEvent[];
+  chatHistory: Record<string, ChatMessage[]>;
+  userStreak: UserStreak;
 
   setActiveTool: (tool: ToolType) => void;
   setBrushColor: (color: string) => void;
@@ -114,6 +169,24 @@ interface AppState {
   updateTextElementPosition: (docId: string, textId: string, x: number, y: number) => void;
 
   setSmartNoteStatus: (docId: string, section: string, status: 'idle' | 'loading' | 'done' | 'error', content?: string) => void;
+
+  // New Productivity Actions
+  setActiveView: (view: 'home' | 'projects' | 'kanban' | 'calendar' | 'canvas') => void;
+  setSelectedProjectId: (id: string | null) => void;
+  addProject: (project: Project) => void;
+  deleteProject: (id: string) => void;
+  updateProject: (id: string, project: Partial<Project>) => void;
+  addKanbanTask: (task: KanbanTask) => void;
+  updateKanbanTask: (id: string, task: Partial<KanbanTask>) => void;
+  deleteKanbanTask: (id: string) => void;
+  addCalendarEvent: (event: CalendarEvent) => void;
+  updateCalendarEvent: (id: string, event: Partial<CalendarEvent>) => void;
+  deleteCalendarEvent: (id: string) => void;
+  addChatMessage: (docOrProjId: string, message: ChatMessage) => void;
+  clearChatHistory: (docOrProjId: string) => void;
+  rotateBackground: () => void;
+  updateStreak: (streak: Partial<UserStreak>) => void;
+  associateFileToProject: (fileId: string, projectId: string | null) => void;
 }
 
 export const useAppStore = create<AppState>()(
@@ -131,6 +204,7 @@ export const useAppStore = create<AppState>()(
           type: 'pdf',
           folderId: null,
           dataUrl: defaultPaperUrl,
+          projectId: 'proj-1'
         }
       ],
       activeDocumentId: defaultPaperId,
@@ -148,19 +222,63 @@ export const useAppStore = create<AppState>()(
       nextcloudStatus: 'idle',
       nextcloudError: null,
 
+      // New Productivity State Init
+      activeView: 'home',
+      selectedProjectId: null,
+      currentBackground: '/bkg1.jpeg',
+      projects: [
+        { id: 'proj-1', name: 'Molecular Gene Research', description: 'Exploring Graph VQ-Transformer methods', color: '#0a7aff', createdAt: new Date().toISOString() },
+        { id: 'proj-2', name: 'Deep Learning Studies', description: 'Investigating standard architectures like Attention and ResNet', color: '#34c759', createdAt: new Date().toISOString() }
+      ],
+      kanbanTasks: [
+        { id: 'task-1', projectId: 'proj-1', title: 'Extract PDF Smart Notes', description: 'Complete smart summaries for the Gene paper.', status: 'inprogress', priority: 'high', dueDate: new Date().toISOString().split('T')[0], createdAt: new Date().toISOString() },
+        { id: 'task-2', projectId: 'proj-1', title: 'Review GVT Architecture', description: 'Analyze Graph VQ-Transformer structural layers.', status: 'todo', priority: 'medium', dueDate: new Date().toISOString().split('T')[0], createdAt: new Date().toISOString() },
+        { id: 'task-3', projectId: 'proj-2', title: 'Replicate ResNet', description: 'Implement a ResNet50 in PyTorch.', status: 'done', priority: 'low', dueDate: new Date().toISOString().split('T')[0], createdAt: new Date().toISOString() }
+      ],
+      calendarEvents: [
+        { id: 'ev-1', title: 'Weekly Project Review', description: 'Going over deep learning summaries', date: new Date().toISOString().split('T')[0], startTime: '10:00', endTime: '11:30', projectId: 'proj-2', createdAt: new Date().toISOString() }
+      ],
+      chatHistory: {},
+      userStreak: {
+        streakCount: 5,
+        lastActiveDate: new Date().toISOString().split('T')[0],
+        totalTasksCompleted: 12,
+        totalNotesCreated: 4
+      },
+
       setActiveTool: (tool) => set({ activeTool: tool }),
       setBrushColor: (color) => set({ brushColor: color }),
       setBrushSize: (size) => set({ brushSize: size }),
       
-      addFolder: (folder: Folder) => set(state => ({ folders: [...state.folders, folder] })),
-      addFile: (file: NoteFile) => set(state => ({ files: [...state.files, file], activeDocumentId: file.id })),
-      deleteFolder: (id: string) => set(state => ({ folders: state.folders.filter(f => f.id !== id) })),
-      deleteFile: (id: string) => set(state => ({ files: state.files.filter(f => f.id !== id), activeDocumentId: state.activeDocumentId === id ? null : state.activeDocumentId })),
-      updateFolder: (id: string, name: string) => set(state => ({ folders: state.folders.map(f => f.id === id ? { ...f, name } : f) })),
-      updateFile: (id: string, name: string) => set(state => ({ files: state.files.map(f => f.id === id ? { ...f, name } : f) })),
-      setActiveDocument: (id: string | null) => set({ activeDocumentId: id }),
-      setNextcloudConfig: (url: string, username: string) => set({ nextcloudUrl: url, nextcloudUsername: username }),
-      setNextcloudConnectionState: (connected: boolean, status: 'idle' | 'connecting' | 'connected' | 'failed', error?: string | null) => set({ nextcloudConnected: connected, nextcloudStatus: status, nextcloudError: error || null }),
+      addFolder: (folder) => set(state => ({ folders: [...state.folders, folder] })),
+      addFile: (file) => set(state => {
+        const nextActive = file.id;
+        const totalNotes = state.userStreak.totalNotesCreated + 1;
+        // update last active date too
+        const today = new Date().toISOString().split('T')[0];
+        let streak = state.userStreak.streakCount;
+        if (state.userStreak.lastActiveDate !== today) {
+          streak = state.userStreak.streakCount + 1;
+        }
+        return {
+          files: [...state.files, file],
+          activeDocumentId: nextActive,
+          activeView: 'canvas',
+          userStreak: {
+            ...state.userStreak,
+            totalNotesCreated: totalNotes,
+            lastActiveDate: today,
+            streakCount: streak
+          }
+        };
+      }),
+      deleteFolder: (id) => set(state => ({ folders: state.folders.filter(f => f.id !== id) })),
+      deleteFile: (id) => set(state => ({ files: state.files.filter(f => f.id !== id), activeDocumentId: state.activeDocumentId === id ? null : state.activeDocumentId })),
+      updateFolder: (id, name) => set(state => ({ folders: state.folders.map(f => f.id === id ? { ...f, name } : f) })),
+      updateFile: (id, name) => set(state => ({ files: state.files.map(f => f.id === id ? { ...f, name } : f) })),
+      setActiveDocument: (id) => set({ activeDocumentId: id, activeView: id ? 'canvas' : 'home' }),
+      setNextcloudConfig: (url, username) => set({ nextcloudUrl: url, nextcloudUsername: username }),
+      setNextcloudConnectionState: (connected, status, error) => set({ nextcloudConnected: connected, nextcloudStatus: status, nextcloudError: error || null }),
 
       toggleRecording: () => set(state => ({ isRecording: !state.isRecording })),
       toggleRightPanel: () => set(state => ({ showRightPanel: !state.showRightPanel })),
@@ -269,6 +387,65 @@ export const useAppStore = create<AppState>()(
           }
         };
       }),
+
+      // New Productivity Actions Impl
+      setActiveView: (view) => set({ activeView: view }),
+      setSelectedProjectId: (id) => set({ selectedProjectId: id }),
+      addProject: (project) => set(state => ({ projects: [...state.projects, project] })),
+      deleteProject: (id) => set(state => ({
+        projects: state.projects.filter(p => p.id !== id),
+        kanbanTasks: state.kanbanTasks.filter(t => t.projectId !== id),
+        files: state.files.map(f => f.projectId === id ? { ...f, projectId: null } : f),
+        selectedProjectId: state.selectedProjectId === id ? null : state.selectedProjectId,
+        activeView: state.selectedProjectId === id ? 'home' : state.activeView
+      })),
+      updateProject: (id, updated) => set(state => ({
+        projects: state.projects.map(p => p.id === id ? { ...p, ...updated } : p)
+      })),
+      addKanbanTask: (task) => set(state => ({ kanbanTasks: [...state.kanbanTasks, task] })),
+      updateKanbanTask: (id, updated) => set(state => {
+        const nextTasks = state.kanbanTasks.map(t => t.id === id ? { ...t, ...updated } : t);
+        const taskObj = state.kanbanTasks.find(t => t.id === id);
+        let completedInc = 0;
+        if (taskObj && taskObj.status !== 'done' && updated.status === 'done') {
+          completedInc = 1;
+        }
+        return {
+          kanbanTasks: nextTasks,
+          userStreak: {
+            ...state.userStreak,
+            totalTasksCompleted: state.userStreak.totalTasksCompleted + completedInc
+          }
+        };
+      }),
+      deleteKanbanTask: (id) => set(state => ({ kanbanTasks: state.kanbanTasks.filter(t => t.id !== id) })),
+      addCalendarEvent: (event) => set(state => ({ calendarEvents: [...state.calendarEvents, event] })),
+      updateCalendarEvent: (id, updated) => set(state => ({
+        calendarEvents: state.calendarEvents.map(e => e.id === id ? { ...e, ...updated } : e)
+      })),
+      deleteCalendarEvent: (id) => set(state => ({ calendarEvents: state.calendarEvents.filter(e => e.id !== id) })),
+      addChatMessage: (id, message) => set(state => {
+        const currentChat = state.chatHistory[id] || [];
+        return {
+          chatHistory: {
+            ...state.chatHistory,
+            [id]: [...currentChat, message]
+          }
+        };
+      }),
+      clearChatHistory: (id) => set(state => {
+        const newHistory = { ...state.chatHistory };
+        delete newHistory[id];
+        return { chatHistory: newHistory };
+      }),
+      rotateBackground: () => set(state => {
+        const nextIdx = Math.floor(Math.random() * 5) + 1;
+        return { currentBackground: `/bkg${nextIdx}.jpeg` };
+      }),
+      updateStreak: (updated) => set(state => ({ userStreak: { ...state.userStreak, ...updated } })),
+      associateFileToProject: (fileId, projectId) => set(state => ({
+        files: state.files.map(f => f.id === fileId ? { ...f, projectId } : f)
+      }))
     }),
     {
       name: 'clio-storage',
@@ -276,3 +453,4 @@ export const useAppStore = create<AppState>()(
     }
   )
 );
+

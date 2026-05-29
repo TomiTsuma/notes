@@ -144,3 +144,71 @@ Generate a highly specific, densely informative technical summary strictly answe
   onChunk(fallbackResponse);
   return fallbackResponse;
 }
+
+export async function generateOllamaChatStream(
+  messages: { role: 'user' | 'assistant'; content: string }[],
+  contextText: string,
+  onChunk: (chunk: string) => void
+): Promise<string> {
+  const historyPrompt = messages.map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n');
+  const latestMessage = messages[messages.length - 1]?.content || '';
+
+  const fullPrompt = `You are a helpful, brilliant AI coding and research assistant integrated into the TomiTsuma Notes workspace. Help the user with their queries. You can reference details from the document context if relevant.
+
+<DocumentContext>
+${contextText.slice(0, 30000)}
+</DocumentContext>
+
+<ConversationHistory>
+${historyPrompt}
+</ConversationHistory>
+
+Assistant:`;
+
+  const response = await fetch(OLLAMA_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: OLLAMA_MODEL,
+      prompt: fullPrompt,
+      stream: true
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`Ollama Chat Error: ${response.status} ${response.statusText}`);
+  }
+
+  const body: any = response.body;
+  if (!body) throw new Error('No stream response body');
+
+  const reader = body.getReader();
+  const decoder = new TextDecoder('utf-8');
+  let text = '';
+  let fullResponse = '';
+
+  while (true) {
+    const result = await reader.read();
+    if (result.done) break;
+    if (!result.value) continue;
+
+    const chunk = decoder.decode(result.value, { stream: true });
+    text += chunk;
+    const lines = text.split('\n');
+    text = lines.pop() || '';
+
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      try {
+        const parsed = JSON.parse(line);
+        if (parsed.response) {
+          fullResponse += parsed.response;
+          onChunk(fullResponse);
+        }
+      } catch (e) {}
+    }
+  }
+
+  return fullResponse;
+}
+

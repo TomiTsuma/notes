@@ -72,3 +72,67 @@ body, html {
 ::-webkit-scrollbar-thumb:hover {
   background: #a8a8a8;
 }
+
+/* Glassmorphism Design Tokens */
+.app-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-size: cover;
+  background-position: center;
+  z-index: -2;
+  transition: background-image 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.app-backdrop-blur {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(240, 242, 246, 0.3); /* Premium soft tint */
+  backdrop-filter: blur(35px) saturate(180%);
+  -webkit-backdrop-filter: blur(35px) saturate(180%);
+  z-index: -1;
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  box-shadow: 0 8px 32px rgba(31, 38, 135, 0.05);
+  border-radius: 20px;
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.glass-card-hover:hover {
+  background: rgba(255, 255, 255, 0.7);
+  box-shadow: 0 16px 48px rgba(31, 38, 135, 0.08);
+  transform: translateY(-3px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+}
+
+/* Custom view containers */
+.workspace-view-container {
+  padding: 40px;
+  overflow-y: auto;
+  height: calc(100vh - 56px);
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Button & interactive animations */
+.btn-animate {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.btn-animate:hover {
+  transform: scale(1.02);
+}
+.btn-animate:active {
+  transform: scale(0.98);
+}
+
