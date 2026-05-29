@@ -1,3 +1,4 @@
+import React, { useState } from 'react';
 import { useAppStore } from '../../store/appStore';
 import type { ToolType } from '../../store/appStore';
 
