@@ -1,8 +1,9 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
+import logo from '../../assets/logo.png';
 import { useAppStore } from '../../store/appStore';
 import type { NoteFile } from '../../store/appStore';
-import { connectNextcloud, testNextcloudConnection, getPapersFromNextcloud, downloadPaperFromNextcloud, type NextcloudPaper } from '../../services/nextcloud';
+import { connectNextcloud, testNextcloudConnection, getPapersFromNextcloud, downloadPaperFromNextcloud, uploadFileToNextcloud, type NextcloudPaper } from '../../services/nextcloud';
 
 const Sidebar: React.FC = () => {
   const { 
@@ -41,6 +42,7 @@ const Sidebar: React.FC = () => {
   const [nextcloudPassword, setNextcloudPassword] = useState('');
   const [remotePapers, setRemotePapers] = useState<NextcloudPaper[]>([]);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [pendingUploads, setPendingUploads] = useState<{ filename: string; dataUrl: string }[]>([]);
   const [isImporting, setIsImporting] = useState(false);
   const [showNextcloudPanel, setShowNextcloudPanel] = useState(false);
 
@@ -124,15 +126,30 @@ const Sidebar: React.FC = () => {
     folderInputRef.current?.click();
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     if (!f) return;
     const ext = f.name.split('.').pop()?.toLowerCase();
     if (!['pdf', 'txt', 'md', 'docx'].includes(ext || '')) return alert("Unsupported file type");
-    
+
     const reader = new FileReader();
-    reader.onload = (event) => {
-      addFile({ id: uuidv4(), name: f.name, type: ext!, folderId: targetFolderId, dataUrl: event.target?.result as string });
+    reader.onload = async (event) => {
+      const dataUrl = event.target?.result as string;
+      const id = uuidv4();
+      addFile({ id, name: f.name, type: ext!, folderId: targetFolderId, dataUrl });
+
+      if (nextcloudConnected) {
+        try {
+          await uploadFileToNextcloud(f.name, dataUrl);
+          console.log(`[Upload] Synced ${f.name} to Nextcloud/Chlio`);
+        } catch (error) {
+          console.error('Cloud sync failed for file:', f.name, error);
+          setPendingUploads(prev => [...prev, { filename: f.name, dataUrl }]);
+        }
+      } else {
+        // Queue for later upload when connection is established
+        setPendingUploads(prev => [...prev, { filename: f.name, dataUrl }]);
+      }
       if (fileInputRef.current) fileInputRef.current.value = '';
     };
     reader.readAsDataURL(f);
@@ -148,14 +165,24 @@ const Sidebar: React.FC = () => {
       if (!supportedExts.includes(ext || '')) return;
 
       const reader = new FileReader();
-      reader.onload = (event) => {
+      reader.onload = async (event) => {
+        const dataUrl = event.target?.result as string;
         addFile({
           id: uuidv4(),
           name: f.name,
           type: ext!,
           folderId: targetFolderId,
-          dataUrl: event.target?.result as string
+          dataUrl
         });
+
+        if (nextcloudConnected) {
+          try {
+            await uploadFileToNextcloud(f.name, dataUrl);
+          } catch (error) {
+            console.error('Cloud sync failed for file:', f.name, error);
+          setPendingUploads(prev => [...prev, { filename: f.name, dataUrl }]);
+          }
+        }
       };
       reader.readAsDataURL(f);
     });
@@ -297,6 +324,44 @@ const Sidebar: React.FC = () => {
     });
   };
 
+  // Retry pending uploads whenever connection is established or every 60s
+  useEffect(() => {
+    if (!nextcloudConnected || pendingUploads.length === 0) return;
+    const tryFlush = async () => {
+      const remaining: { filename: string; dataUrl: string }[] = [];
+      for (const item of pendingUploads) {
+        try {
+          await uploadFileToNextcloud(item.filename, item.dataUrl);
+          console.log(`[PendingUpload] Synced ${item.filename} to Nextcloud`);
+        } catch (err) {
+          console.error(`[PendingUpload] Retry failed for ${item.filename}:`, err);
+          remaining.push(item);
+        }
+      }
+      setPendingUploads(remaining);
+    };
+    tryFlush();
+  }, [nextcloudConnected]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!nextcloudConnected || pendingUploads.length === 0) return;
+      const tryFlush = async () => {
+        const remaining: { filename: string; dataUrl: string }[] = [];
+        for (const item of pendingUploads) {
+          try {
+            await uploadFileToNextcloud(item.filename, item.dataUrl);
+          } catch (err) {
+            remaining.push(item);
+          }
+        }
+        setPendingUploads(remaining);
+      };
+      tryFlush();
+    }, 60000);
+    return () => clearInterval(interval);
+  }, [nextcloudConnected, pendingUploads]);
+
   return (
     <div 
       className="sidebar-panel glass-card" 
@@ -321,8 +386,8 @@ const Sidebar: React.FC = () => {
       <div style={{ padding: '20px 20px 12px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 900, fontSize: '20px', letterSpacing: '-0.5px', color: '#1c1c1e' }}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0a7aff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>
-            TomiTsuma
+            <img src={logo} alt="Logo" style={{ width: '24px', height: '24px' }} />
+            Chlio
             <span style={{ fontSize: '10px', backgroundColor: 'rgba(10, 122, 255, 0.1)', padding: '2px 6px', borderRadius: '6px', fontWeight: 800, color: '#0a7aff' }}>OS</span>
           </div>
         </div>

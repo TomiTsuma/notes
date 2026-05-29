@@ -101,6 +101,32 @@ export const downloadPaperFromNextcloud = async (remotePath: string): Promise<st
   return `data:application/pdf;base64,${base64}`;
 };
 
+export const uploadFileToNextcloud = async (filename: string, dataUrl: string) => {
+  if (!client) throw new Error('Not connected to Nextcloud');
+  try {
+    const targetDir = '/Chlio';
+    const exists = await client.exists(targetDir);
+    if (!exists) {
+      await client.createDirectory(targetDir);
+    }
+
+    // Convert dataURL to binary
+    const base64 = dataUrl.split(',')[1];
+    const binaryString = atob(base64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+
+    await client.putFileContents(`${targetDir}/${filename}`, bytes, { overwrite: true });
+    console.log(`File ${filename} uploaded to Nextcloud path /Chlio`);
+    return true;
+  } catch (error) {
+    console.error('Failed to upload file to Nextcloud:', error);
+    throw error;
+  }
+};
+
 export const syncNotesToNextcloud = async (noteData: string, filename: string) => {
   if (!client) return;
   try {

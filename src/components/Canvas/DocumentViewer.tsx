@@ -74,11 +74,11 @@ const DocumentViewer: React.FC = () => {
             </Document>
           )}
           
-          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, pointerEvents: 'none' }}>
-            <div style={{ pointerEvents: 'none', position: 'absolute', width: '100%', height: '100%' }}>
+          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, pointerEvents: 'auto' }}>
+            <div style={{ position: 'absolute', width: '100%', height: '100%' }}>
                <DrawingCanvas />
             </div>
-            <div style={{ pointerEvents: 'none', position: 'absolute', width: '100%', height: '100%' }}>
+            <div style={{ position: 'absolute', width: '100%', height: '100%' }}>
                <TextLayerOverlay />
             </div>
           </div>

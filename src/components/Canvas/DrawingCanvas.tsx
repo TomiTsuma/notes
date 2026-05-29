@@ -2,6 +2,7 @@ import React, { useRef, useState, useCallback, useEffect } from 'react';
 import { getStroke } from 'perfect-freehand';
 import { useAppStore } from '../../store/appStore';
 import type { Stroke, Point } from '../../store/appStore';
+import { v4 as uuidv4 } from 'uuid';
 
 function getSvgPathFromStroke(stroke: number[][]) {
   if (!stroke || stroke.length === 0) return '';
@@ -22,7 +23,7 @@ function getSvgPathFromStroke(stroke: number[][]) {
 type Box = { x: number, y: number, w: number, h: number };
 
 const DrawingCanvas: React.FC = () => {
-  const { activeTool, brushColor, brushSize, activeDocumentId, annotations, setStrokes, translateStrokes } = useAppStore();
+  const { activeTool, brushColor, brushSize, activeDocumentId, annotations, setStrokes, translateStrokes, addTextElement } = useAppStore();
   
   const strokes = activeDocumentId && annotations[activeDocumentId] ? annotations[activeDocumentId].strokes : [];
   
@@ -62,6 +63,19 @@ const DrawingCanvas: React.FC = () => {
       return;
     }
 
+    if (activeTool === 'text' || activeTool === 'sticky') {
+      addTextElement(activeDocumentId, {
+        id: uuidv4(),
+        x,
+        y,
+        text: '',
+        type: activeTool
+      });
+      setLassoBox(null);
+      setSelectedIndices([]);
+      return;
+    }
+
     if (activeTool !== 'pen' && activeTool !== 'highlighter' && activeTool !== 'eraser' && activeTool !== 'ruler') return;
     
     setLassoBox(null);
@@ -75,7 +89,7 @@ const DrawingCanvas: React.FC = () => {
         setSnapMode(true);
       }, 400); 
     }
-  }, [activeTool, lassoBox, activeDocumentId]);
+  }, [activeTool, lassoBox, activeDocumentId, addTextElement]);
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     if (e.buttons !== 1) return;

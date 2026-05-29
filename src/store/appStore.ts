@@ -18,6 +18,23 @@ const idbStorage = {
   },
 };
 
+const calculateNextStreak = (currentStreak: number, lastActiveDate: string, today: string): number => {
+  if (lastActiveDate === today) return currentStreak;
+
+  const lastDate = new Date(lastActiveDate);
+  const todayDate = new Date(today);
+
+  // Calculate difference in days
+  const diffTime = Math.abs(todayDate.getTime() - lastDate.getTime());
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+  if (diffDays === 1) {
+    return currentStreak + 1;
+  } else {
+    return 1; // Reset to 1 if gap is more than 1 day
+  }
+};
+
 export type ToolType = 'pen' | 'highlighter' | 'text' | 'eraser' | 'sticky' | 'select' | 'ruler';
 
 export interface TextElement {
@@ -56,6 +73,7 @@ export interface NoteFile {
   folderId: string | null;
   dataUrl?: string; // Securely storing the PDF natively encoded in base 64 as standard state flow
   projectId?: string | null; // Associated project ID
+  remotePath?: string; // Path on Nextcloud for persistence
 }
 
 export interface SmartNoteSection {
@@ -240,10 +258,10 @@ export const useAppStore = create<AppState>()(
       ],
       chatHistory: {},
       userStreak: {
-        streakCount: 5,
+        streakCount: 0,
         lastActiveDate: new Date().toISOString().split('T')[0],
-        totalTasksCompleted: 12,
-        totalNotesCreated: 4
+        totalTasksCompleted: 0,
+        totalNotesCreated: 0
       },
 
       setActiveTool: (tool) => set({ activeTool: tool }),
@@ -254,12 +272,8 @@ export const useAppStore = create<AppState>()(
       addFile: (file) => set(state => {
         const nextActive = file.id;
         const totalNotes = state.userStreak.totalNotesCreated + 1;
-        // update last active date too
         const today = new Date().toISOString().split('T')[0];
-        let streak = state.userStreak.streakCount;
-        if (state.userStreak.lastActiveDate !== today) {
-          streak = state.userStreak.streakCount + 1;
-        }
+        const streak = calculateNextStreak(state.userStreak.streakCount, state.userStreak.lastActiveDate, today);
         return {
           files: [...state.files, file],
           activeDocumentId: nextActive,
@@ -275,7 +289,7 @@ export const useAppStore = create<AppState>()(
       deleteFolder: (id) => set(state => ({ folders: state.folders.filter(f => f.id !== id) })),
       deleteFile: (id) => set(state => ({ files: state.files.filter(f => f.id !== id), activeDocumentId: state.activeDocumentId === id ? null : state.activeDocumentId })),
       updateFolder: (id, name) => set(state => ({ folders: state.folders.map(f => f.id === id ? { ...f, name } : f) })),
-      updateFile: (id, name) => set(state => ({ files: state.files.map(f => f.id === id ? { ...f, name } : f) })),
+      updateFile: (id, updated) => set(state => ({ files: state.files.map(f => f.id === id ? { ...f, ...updated } : f) })),
       setActiveDocument: (id) => set({ activeDocumentId: id, activeView: id ? 'canvas' : 'home' }),
       setNextcloudConfig: (url, username) => set({ nextcloudUrl: url, nextcloudUsername: username }),
       setNextcloudConnectionState: (connected, status, error) => set({ nextcloudConnected: connected, nextcloudStatus: status, nextcloudError: error || null }),
@@ -407,14 +421,21 @@ export const useAppStore = create<AppState>()(
         const nextTasks = state.kanbanTasks.map(t => t.id === id ? { ...t, ...updated } : t);
         const taskObj = state.kanbanTasks.find(t => t.id === id);
         let completedInc = 0;
+        let streakUpdate = {};
         if (taskObj && taskObj.status !== 'done' && updated.status === 'done') {
           completedInc = 1;
+          const today = new Date().toISOString().split('T')[0];
+          streakUpdate = {
+            streakCount: calculateNextStreak(state.userStreak.streakCount, state.userStreak.lastActiveDate, today),
+            lastActiveDate: today
+          };
         }
         return {
           kanbanTasks: nextTasks,
           userStreak: {
             ...state.userStreak,
-            totalTasksCompleted: state.userStreak.totalTasksCompleted + completedInc
+            totalTasksCompleted: state.userStreak.totalTasksCompleted + completedInc,
+            ...streakUpdate
           }
         };
       }),
