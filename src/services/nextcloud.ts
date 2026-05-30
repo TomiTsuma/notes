@@ -118,7 +118,7 @@ export const uploadFileToNextcloud = async (filename: string, dataUrl: string) =
       bytes[i] = binaryString.charCodeAt(i);
     }
 
-    await client.putFileContents(`${targetDir}/${filename}`, bytes, { overwrite: true });
+    await client.putFileContents(`${targetDir}/${filename}`, bytes as any, { overwrite: true });
     console.log(`File ${filename} uploaded to Nextcloud path /Chlio`);
     return true;
   } catch (error) {

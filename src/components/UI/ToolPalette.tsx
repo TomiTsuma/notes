@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../../store/appStore';
-import type { ToolType } from '../../store/appStore';
 
 // Icon helpers
 import { LassoIcon, RulerIcon, StickyIcon, UndoIcon } from '../Layout/FloatingToolbar';

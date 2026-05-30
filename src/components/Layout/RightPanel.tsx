@@ -3,7 +3,6 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 import { useAppStore } from '../../store/appStore';
-import type { ChatMessage } from '../../store/appStore';
 import { v4 as uuidv4 } from 'uuid';
 import * as ReactMarkdownImport from 'react-markdown';
 const ReactMarkdown: any = (ReactMarkdownImport as any).default || ReactMarkdownImport;

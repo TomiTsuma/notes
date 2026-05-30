@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../../store/appStore';
-import type { NoteFile, Project } from '../../store/appStore';
 import { v4 as uuidv4 } from 'uuid';
 
 const ProjectsSection: React.FC = () => {

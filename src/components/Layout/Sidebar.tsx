@@ -380,7 +380,7 @@ const Sidebar: React.FC = () => {
     >
       {/* Invisible inputs */}
       <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".pdf,.txt,.md,.docx" style={{ display: 'none' }} />
-      <input type="file" ref={folderInputRef} onChange={handleFolderUpload} multiple accept=".pdf,.txt,.md,.docx" style={{ display: 'none' }} webkitdirectory="true" />
+      <input type="file" ref={folderInputRef} onChange={handleFolderUpload} multiple accept=".pdf,.txt,.md,.docx" style={{ display: 'none' }} {...({ webkitdirectory: '' } as any)} />
       
       {/* Header Branding */}
       <div style={{ padding: '20px 20px 12px' }}>

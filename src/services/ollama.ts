@@ -151,7 +151,6 @@ export async function generateOllamaChatStream(
   onChunk: (chunk: string) => void
 ): Promise<string> {
   const historyPrompt = messages.map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n');
-  const latestMessage = messages[messages.length - 1]?.content || '';
 
   const fullPrompt = `You are a helpful, brilliant AI coding and research assistant integrated into the TomiTsuma Notes workspace. Help the user with their queries. You can reference details from the document context if relevant.
 

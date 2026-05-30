@@ -66,7 +66,7 @@ const DocumentViewer: React.FC = () => {
               loading={<div style={{ padding: '40px', fontFamily: 'Nunito' }}>Loading Document Engine natively...</div>}
             >
               {Array.from(new Array(numPages || 0), (_, index) => (
-                <div key={`page_${index + 1}`} style={{ marginBottom: '16px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', backgroundColor: 'white' }}>
+                <div key={`page_${index + 1}`} style={{ marginBottom: '16px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', backgroundColor: 'white', pointerEvents: 'none' }}>
                    {/* Standard page rendering */}
                    <Page pageNumber={index + 1} renderTextLayer={false} renderAnnotationLayer={false} width={800} />
                 </div>

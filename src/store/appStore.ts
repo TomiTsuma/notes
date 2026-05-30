@@ -289,7 +289,7 @@ export const useAppStore = create<AppState>()(
       deleteFolder: (id) => set(state => ({ folders: state.folders.filter(f => f.id !== id) })),
       deleteFile: (id) => set(state => ({ files: state.files.filter(f => f.id !== id), activeDocumentId: state.activeDocumentId === id ? null : state.activeDocumentId })),
       updateFolder: (id, name) => set(state => ({ folders: state.folders.map(f => f.id === id ? { ...f, name } : f) })),
-      updateFile: (id, updated) => set(state => ({ files: state.files.map(f => f.id === id ? { ...f, ...updated } : f) })),
+      updateFile: (id, updated) => set(state => ({ files: state.files.map(f => f.id === id ? { ...f, ...(updated as any) } : f) })),
       setActiveDocument: (id) => set({ activeDocumentId: id, activeView: id ? 'canvas' : 'home' }),
       setNextcloudConfig: (url, username) => set({ nextcloudUrl: url, nextcloudUsername: username }),
       setNextcloudConnectionState: (connected, status, error) => set({ nextcloudConnected: connected, nextcloudStatus: status, nextcloudError: error || null }),
@@ -459,7 +459,7 @@ export const useAppStore = create<AppState>()(
         delete newHistory[id];
         return { chatHistory: newHistory };
       }),
-      rotateBackground: () => set(state => {
+      rotateBackground: () => set(() => {
         const nextIdx = Math.floor(Math.random() * 5) + 1;
         return { currentBackground: `/bkg${nextIdx}.jpeg` };
       }),

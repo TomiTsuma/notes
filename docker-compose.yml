@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  clio:
+    build: .
+    image: ttsu/chlio
+    container_name: clio-app
+    ports:
+      - "8191:8191"
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
