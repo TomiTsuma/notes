@@ -31,7 +31,7 @@ const RightPanel: React.FC = () => {
     // New AI Chat store integrations
     chatHistory,
     addChatMessage,
-    clearChatHistory
+    clearChatHistory,
   } = useAppStore();
 
   const file = activeDocumentId ? files.find(f => f.id === activeDocumentId) : null;
@@ -247,16 +247,17 @@ Please let me know how you would like to proceed!`;
     bottom: isMobilePanel ? 0 : undefined,
     width: `${panelWidth}px`,
     maxWidth: '92vw',
-    backgroundColor: 'rgba(255, 255, 255, 0.65)',
+    backgroundColor: 'var(--bg-panel)',
     backdropFilter: 'blur(30px) saturate(160%)',
     WebkitBackdropFilter: 'blur(30px) saturate(160%)',
-    borderLeft: '1px solid rgba(255, 255, 255, 0.4)',
+    borderLeft: '1px solid var(--border-color)',
     display: 'flex',
     flexDirection: 'column',
     height: '100%',
     fontFamily: 'Nunito, sans-serif',
     zIndex: isMobilePanel ? 120 : undefined,
-    boxShadow: 'rgba(31, 38, 135, 0.08) -8px 0 32px',
+    boxShadow: `-8px 0 32px var(--shadow-md)`,
+    color: 'var(--text-primary)',
   };
 
   return (
@@ -279,7 +280,7 @@ Please let me know how you would like to proceed!`;
 
       {/* Header Container */}
       <div style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
-        <button onClick={toggleRightPanel} style={{ background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#1c1c1e' }}>
+        <button onClick={toggleRightPanel} style={{ background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', color: 'var(--text-primary)' }}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
 
@@ -326,8 +327,8 @@ Please let me know how you would like to proceed!`;
         /* ================== SUMMARY PANEL MODE ================== */
         <div style={{ padding: '24px 20px', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
            <div style={{ marginBottom: '20px' }}>
-              <div style={{ fontSize: '11px', color: '#8e8e93', fontWeight: 800, marginBottom: '6px', letterSpacing: '0.5px' }}>ACTIVE FILE</div>
-              <div style={{ fontSize: '14px', wordBreak: 'break-all', fontWeight: 800, color: '#1c1c1e' }}>{file?.name || 'No note selected'}</div>
+              <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 800, marginBottom: '6px', letterSpacing: '0.5px' }}>ACTIVE FILE</div>
+              <div style={{ fontSize: '14px', wordBreak: 'break-all', fontWeight: 800, color: 'var(--text-primary)' }}>{file?.name || 'No note selected'}</div>
            </div>
            
            <div style={{ marginTop: '12px', borderTop: '1px solid rgba(0,0,0,0.05)', paddingTop: '20px' }}>
@@ -339,14 +340,14 @@ Please let me know how you would like to proceed!`;
                 <button 
                   onClick={handleGenerateAll}
                   disabled={isExtractingGlobal || !activeDocumentId || file?.type !== 'pdf'}
-                  style={{ backgroundColor: '#ffffff', border: '1px solid rgba(0,0,0,0.06)', padding: '6px 14px', borderRadius: '12px', fontSize: '11px', fontWeight: 800, cursor: (isExtractingGlobal || !activeDocumentId || file?.type !== 'pdf') ? 'not-allowed' : 'pointer', color: '#333', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}
+                  style={{ backgroundColor: '#ffffff', border: '1px solid var(--border-subtle)', padding: '6px 14px', borderRadius: '12px', fontSize: '11px', fontWeight: 800, cursor: (isExtractingGlobal || !activeDocumentId || file?.type !== 'pdf') ? 'not-allowed' : 'pointer', color: '#333', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}
                   className="btn-animate"
                 >
                   {isExtractingGlobal ? 'Generating...' : 'Extract All'}
                 </button>
               </div>
               
-              <div style={{ fontSize: '11px', color: '#8e8e93', marginBottom: '20px', lineHeight: 1.4, fontWeight: 500 }}>
+              <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '20px', lineHeight: 1.4, fontWeight: 500 }}>
                 Extract dense, high-fidelity research insights explicitly requested for GVT mapping.
               </div>
   
@@ -369,7 +370,7 @@ Please let me know how you would like to proceed!`;
                           cursor: 'pointer',
                           fontSize: '13px',
                           fontWeight: 800,
-                          color: '#1c1c1e',
+                          color: 'var(--text-primary)',
                           textAlign: 'left'
                         }}
                       >
@@ -379,7 +380,7 @@ Please let me know how you would like to proceed!`;
                       {expanded && (
                         <div style={{ padding: '14px', backgroundColor: '#fff', minHeight: '80px', borderTop: '1px solid rgba(0,0,0,0.04)' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                            <span style={{ fontSize: '11px', color: '#8e8e93', fontWeight: 700 }}>{noteState?.status === 'loading' ? 'Generating...' : noteState?.status === 'done' ? 'Ready' : noteState?.status === 'error' ? 'Failed' : 'Idle'}</span>
+                            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 700 }}>{noteState?.status === 'loading' ? 'Generating...' : noteState?.status === 'done' ? 'Ready' : noteState?.status === 'error' ? 'Failed' : 'Idle'}</span>
                             <button
                               onClick={() => handleGenerateSingle(topic)}
                               style={{ background: '#f0f0f5', border: 'none', padding: '6px 10px', borderRadius: '8px', cursor: 'pointer', fontSize: '11px', fontWeight: 800, color: '#333' }}
@@ -405,7 +406,7 @@ Please let me know how you would like to proceed!`;
                             </div>
                           )}
                           {!noteState?.content && noteState?.status !== 'loading' && noteState?.status !== 'error' && (
-                            <div style={{ fontSize: '12px', color: '#8e8e93', lineHeight: 1.6 }}>
+                            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
                               Tap Generate to analyze this section and view output.
                             </div>
                           )}
@@ -441,10 +442,10 @@ Please let me know how you would like to proceed!`;
             
             {/* Assistant Welcome message */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignSelf: 'flex-start', maxWidth: '85%' }}>
-              <div style={{ backgroundColor: '#ffffff', border: '1px solid rgba(0,0,0,0.04)', borderRadius: '14px 14px 14px 4px', padding: '12px 14px', fontSize: '13px', color: '#1c1c1e', lineHeight: 1.5, boxShadow: '0 2px 8px rgba(0,0,0,0.01)' }}>
+              <div style={{ backgroundColor: '#ffffff', border: '1px solid rgba(0,0,0,0.04)', borderRadius: '14px 14px 14px 4px', padding: '12px 14px', fontSize: '13px', color: 'var(--text-primary)', lineHeight: 1.5, boxShadow: '0 2px 8px rgba(0,0,0,0.01)' }}>
                 Hi TomiTsuma! I'm your Clio AI Workspace Assistant. I read active document context natively. Let me know if you want me to explain GVT architectures, draft a plan, or schedule items!
               </div>
-              <span style={{ fontSize: '10px', color: '#8e8e93', fontWeight: 700, marginLeft: '4px' }}>AI Assistant</span>
+              <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 700, marginLeft: '4px' }}>AI Assistant</span>
             </div>
 
             {/* Bubble items */}
@@ -474,7 +475,7 @@ Please let me know how you would like to proceed!`;
                   }}>
                     {isUser ? msg.content : <ReactMarkdown>{msg.content}</ReactMarkdown>}
                   </div>
-                  <span style={{ fontSize: '10px', color: '#8e8e93', fontWeight: 700, alignSelf: isUser ? 'flex-end' : 'flex-start', marginRight: isUser ? '4px' : 0, marginLeft: isUser ? 0 : '4px' }}>
+                  <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 700, alignSelf: isUser ? 'flex-end' : 'flex-start', marginRight: isUser ? '4px' : 0, marginLeft: isUser ? 0 : '4px' }}>
                     {isUser ? 'You' : 'Clio AI'} • {msg.timestamp}
                   </span>
                 </div>
@@ -484,7 +485,7 @@ Please let me know how you would like to proceed!`;
             {/* Live Streaming Assistant bubble */}
             {isGeneratingChat && chatStreamText && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignSelf: 'flex-start', maxWidth: '85%' }}>
-                <div style={{ backgroundColor: '#ffffff', border: '1px solid rgba(0,0,0,0.04)', borderRadius: '14px 14px 14px 4px', padding: '12px 14px', fontSize: '13px', color: '#1c1c1e', lineHeight: 1.5, boxShadow: '0 2px 8px rgba(0,0,0,0.01)' }}>
+                <div style={{ backgroundColor: '#ffffff', border: '1px solid rgba(0,0,0,0.04)', borderRadius: '14px 14px 14px 4px', padding: '12px 14px', fontSize: '13px', color: 'var(--text-primary)', lineHeight: 1.5, boxShadow: '0 2px 8px rgba(0,0,0,0.01)' }}>
                   <ReactMarkdown>{chatStreamText}</ReactMarkdown>
                 </div>
                 <span style={{ fontSize: '10px', color: '#0a7aff', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '4px' }}>
@@ -518,9 +519,9 @@ Please let me know how you would like to proceed!`;
                 flex: 1,
                 padding: '12px',
                 borderRadius: '12px',
-                border: '1px solid rgba(0,0,0,0.1)',
+                border: '1px solid var(--border-color)',
                 fontSize: '13px',
-                background: '#ffffff',
+                background: 'var(--btn-secondary-bg)',
                 outline: 'none'
               }}
             />

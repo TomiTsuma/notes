@@ -3,7 +3,13 @@ import { v4 as uuidv4 } from 'uuid';
 import logo from '../../assets/logo.png';
 import { useAppStore } from '../../store/appStore';
 import type { NoteFile } from '../../store/appStore';
-import { connectNextcloud, testNextcloudConnection, getPapersFromNextcloud, downloadPaperFromNextcloud, uploadFileToNextcloud, type NextcloudPaper } from '../../services/nextcloud';
+import {
+  connectNextcloudWithFallback, disconnectNextcloud, getPapersFromNextcloud,
+  downloadPaperFromNextcloud, uploadFileToNextcloud, setPapersPath, setSyncPath,
+  getPapersPath, getSyncPath,
+  type NextcloudPaper,
+} from '../../services/nextcloud';
+import NextcloudFolderPicker from '../Modals/NextcloudFolderPicker';
 
 const Sidebar: React.FC = () => {
   const { 
@@ -31,7 +37,15 @@ const Sidebar: React.FC = () => {
     addProject,
     rotateBackground,
     selectedProjectId,
-    setSelectedProjectId
+    setSelectedProjectId,
+    tags,
+    addTag,
+    setFileTags,
+    tagSearchQuery,
+    setTagSearchQuery,
+    nextcloudPapersPath,
+    nextcloudSyncPath,
+    setNextcloudPaths,
   } = useAppStore();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -45,6 +59,10 @@ const Sidebar: React.FC = () => {
   const [pendingUploads, setPendingUploads] = useState<{ filename: string; dataUrl: string }[]>([]);
   const [isImporting, setIsImporting] = useState(false);
   const [showNextcloudPanel, setShowNextcloudPanel] = useState(false);
+  const [showTagsPanel, setShowTagsPanel] = useState(false);
+  const [taggingFileId, setTaggingFileId] = useState<string | null>(null);
+  const [folderPickerMode, setFolderPickerMode] = useState<'papers' | 'sync' | null>(null);
+  const autoConnectAttempted = useRef(false);
 
   const toggleExpand = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -57,17 +75,24 @@ const Sidebar: React.FC = () => {
 
   const connectCloud = async (e?: React.MouseEvent<HTMLButtonElement>) => {
     if (e) e.stopPropagation();
+    if (isConnecting) return;
     if (!nextcloudUrl.trim() || !nextcloudUsername.trim()) {
       return alert('Please enter your Nextcloud server and username.');
+    }
+    if (!nextcloudPassword.trim()) {
+      return alert('Please enter your Nextcloud password.');
     }
 
     setIsConnecting(true);
     setNextcloudConnectionState(false, 'connecting', null);
 
     try {
-      connectNextcloud(nextcloudUrl, nextcloudUsername, nextcloudPassword);
-      await testNextcloudConnection();
-      const papers = await getPapersFromNextcloud();
+      sessionStorage.setItem('nc_pass', nextcloudPassword);
+      setPapersPath(nextcloudPapersPath);
+      setSyncPath(nextcloudSyncPath);
+      setNextcloudPaths(getPapersPath(), getSyncPath());
+      await connectNextcloudWithFallback(nextcloudUrl, nextcloudUsername, nextcloudPassword);
+      const papers = await getPapersFromNextcloud(nextcloudPapersPath);
       setRemotePapers(papers);
       setNextcloudConnectionState(true, 'connected', null);
     } catch (error) {
@@ -81,16 +106,59 @@ const Sidebar: React.FC = () => {
 
   const disconnectCloud = (e?: React.MouseEvent<HTMLButtonElement>) => {
     if (e) e.stopPropagation();
+    disconnectNextcloud();
+    sessionStorage.removeItem('nc_pass');
     setNextcloudConnectionState(false, 'idle', null);
     setRemotePapers([]);
   };
+
+  useEffect(() => {
+    if (autoConnectAttempted.current) return;
+    autoConnectAttempted.current = true;
+
+    const savedPass = sessionStorage.getItem('nc_pass');
+    if (!savedPass || !nextcloudUrl || !nextcloudUsername || nextcloudConnected) return;
+
+    setNextcloudPassword(savedPass);
+    setPapersPath(nextcloudPapersPath);
+    setSyncPath(nextcloudSyncPath);
+    setNextcloudPaths(getPapersPath(), getSyncPath());
+    setIsConnecting(true);
+    setNextcloudConnectionState(false, 'connecting', null);
+
+    connectNextcloudWithFallback(nextcloudUrl, nextcloudUsername, savedPass)
+      .then(() => getPapersFromNextcloud(nextcloudPapersPath))
+      .then(papers => {
+        setRemotePapers(papers);
+        setNextcloudConnectionState(true, 'connected', null);
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        setNextcloudConnectionState(false, 'failed', message);
+      })
+      .finally(() => setIsConnecting(false));
+  }, []);
+
+  const handleCreateTag = () => {
+    const name = prompt('Tag name (e.g. variational_auto_encoder):');
+    if (!name?.trim()) return;
+    addTag({ id: `tag-${uuidv4().substring(0, 8)}`, name: name.trim().toLowerCase().replace(/\s+/g, '_'), createdAt: new Date().toISOString() });
+  };
+
+  const filteredFiles = tagSearchQuery.trim()
+    ? files.filter(f => {
+        const q = tagSearchQuery.toLowerCase();
+        const fileTags = (f.tags || []).map(tid => tags.find(t => t.id === tid)?.name || '').join(' ');
+        return f.name.toLowerCase().includes(q) || fileTags.includes(q);
+      })
+    : files;
 
   const importNextcloudPaper = async (paper: NextcloudPaper) => {
     setIsImporting(true);
     try {
       const fileDataUrl = await downloadPaperFromNextcloud(paper.path);
       const id = uuidv4();
-      addFile({ id, name: `${paper.title}.pdf`, type: 'pdf', folderId: null, dataUrl: fileDataUrl });
+      addFile({ id, name: `${paper.title}.pdf`, type: 'pdf', folderId: null, dataUrl: fileDataUrl, remotePath: paper.path });
       setActiveDocument(id);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -136,12 +204,11 @@ const Sidebar: React.FC = () => {
     reader.onload = async (event) => {
       const dataUrl = event.target?.result as string;
       const id = uuidv4();
-      addFile({ id, name: f.name, type: ext!, folderId: targetFolderId, dataUrl });
-
+      let remotePath: string | undefined;
       if (nextcloudConnected) {
         try {
-          await uploadFileToNextcloud(f.name, dataUrl);
-          console.log(`[Upload] Synced ${f.name} to Nextcloud/Chlio`);
+          remotePath = await uploadFileToNextcloud(f.name, dataUrl, nextcloudSyncPath);
+          console.log(`[Upload] Synced ${f.name} to ${remotePath}`);
         } catch (error) {
           console.error('Cloud sync failed for file:', f.name, error);
           setPendingUploads(prev => [...prev, { filename: f.name, dataUrl }]);
@@ -150,6 +217,7 @@ const Sidebar: React.FC = () => {
         // Queue for later upload when connection is established
         setPendingUploads(prev => [...prev, { filename: f.name, dataUrl }]);
       }
+      addFile({ id, name: f.name, type: ext!, folderId: targetFolderId, dataUrl, remotePath });
       if (fileInputRef.current) fileInputRef.current.value = '';
     };
     reader.readAsDataURL(f);
@@ -196,7 +264,7 @@ const Sidebar: React.FC = () => {
       onContextMenu={(e) => { 
         e.preventDefault(); 
         if (confirm(`Are you sure you want to delete '${file.name}'?`)) deleteFile(file.id); 
-        else { const n = prompt('Rename file:', file.name); if(n) updateFile(file.id, n); } 
+        else { const n = prompt('Rename file:', file.name); if(n) updateFile(file.id, { name: n }); } 
       }}
       title="Right click to Rename/Delete"
       style={{ 
@@ -208,7 +276,7 @@ const Sidebar: React.FC = () => {
         gap: '8px', 
         fontSize: '13px', 
         fontWeight: activeDocumentId === file.id && activeView === 'canvas' ? 700 : 500, 
-        color: activeDocumentId === file.id && activeView === 'canvas' ? '#0a7aff' : '#1c1c1e',
+        color: activeDocumentId === file.id && activeView === 'canvas' ? 'var(--accent-color)' : 'var(--text-primary)',
         cursor: 'pointer', 
         marginBottom: '2px',
         transition: 'all 0.2s ease'
@@ -217,6 +285,12 @@ const Sidebar: React.FC = () => {
     >
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z"/></svg>
       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{file.name}</span>
+      {(file.tags || []).slice(0, 2).map(tid => {
+        const t = tags.find(tag => tag.id === tid);
+        return t ? <span key={tid} style={{ fontSize: 8, padding: '2px 5px', borderRadius: 6, background: 'rgba(10,122,255,0.12)', color: '#0a7aff', fontWeight: 800 }}>{t.name.slice(0, 8)}</span> : null;
+      })}
+      <button onClick={(e) => { e.stopPropagation(); setTaggingFileId(file.id); setShowTagsPanel(true); }} title="Manage tags"
+        style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 10, color: 'var(--text-secondary)' }}>🏷</button>
       {file.projectId && (() => {
         const p = projects.find(proj => proj.id === file.projectId);
         return p ? (
@@ -230,7 +304,7 @@ const Sidebar: React.FC = () => {
 
   const renderFolder = (folderId: string | null, depth: number) => {
     const childFolders = folders.filter(f => f.parentId === folderId);
-    const childFiles = files.filter(f => f.folderId === folderId);
+    const childFiles = filteredFiles.filter(f => f.folderId === folderId);
     
     return (
       <div key={folderId || 'root'}>
@@ -246,17 +320,17 @@ const Sidebar: React.FC = () => {
               }}
               onClick={(e) => toggleExpand(folderId, e)}
               title="Right click to Rename/Delete"
-              style={{ padding: `8px 12px 8px ${12 + depth * 16}px`, borderRadius: '8px', marginBottom: '2px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer', fontWeight: 600, color: '#3a3b3c' }}
+              style={{ padding: `8px 12px 8px ${12 + depth * 16}px`, borderRadius: '8px', marginBottom: '2px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer', fontWeight: 600, color: 'var(--text-sidebar)' }}
               className="btn-animate"
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ transform: isExp ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }}><path d="M9 18l6-6-6-6"/></svg>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8e8e93" strokeWidth="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2v11z"/></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2v11z"/></svg>
               <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{folder.name}</span>
               
               <div style={{ display: 'flex', gap: '6px' }}>
-                <span onClick={(e) => triggerUpload(folderId, e)} title="Upload File" style={{ color: '#8e8e93', fontSize: '13px' }}>↑</span>
-                <span onClick={(e) => triggerFolderUpload(folderId, e)} title="Upload Folder" style={{ color: '#8e8e93', fontSize: '13px' }}>📁</span>
-                <span onClick={(e) => handleNewFolder(folderId, e)} title="New Subfolder" style={{ color: '#8e8e93', fontSize: '13px' }}>+</span>
+                <span onClick={(e) => triggerUpload(folderId, e)} title="Upload File" style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>↑</span>
+                <span onClick={(e) => triggerFolderUpload(folderId, e)} title="Upload Folder" style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>📁</span>
+                <span onClick={(e) => handleNewFolder(folderId, e)} title="New Subfolder" style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>+</span>
               </div>
             </div>
           );
@@ -291,8 +365,8 @@ const Sidebar: React.FC = () => {
           borderRadius: '12px',
           fontSize: '14px',
           fontWeight: isActive ? 800 : 600,
-          color: isActive ? '#0a7aff' : '#48484a',
-          backgroundColor: isActive ? 'rgba(10, 122, 255, 0.12)' : 'transparent',
+          color: isActive ? 'var(--accent-color)' : 'var(--text-muted)',
+          backgroundColor: isActive ? 'var(--accent-light)' : 'transparent',
           cursor: 'pointer',
           marginBottom: '4px',
           transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)'
@@ -368,14 +442,15 @@ const Sidebar: React.FC = () => {
       style={{ 
         width: '280px', 
         minWidth: '280px', 
-        background: 'rgba(255, 255, 255, 0.45)', 
-        borderRight: '1px solid rgba(255, 255, 255, 0.35)', 
+        background: 'var(--bg-sidebar)', 
+        borderRight: '1px solid var(--sidebar-border)', 
         display: 'flex', 
         flexDirection: 'column', 
         height: '100%', 
         fontFamily: 'Nunito, sans-serif',
         borderRadius: 0,
-        boxShadow: 'none'
+        boxShadow: 'none',
+        color: 'var(--text-primary)',
       }}
     >
       {/* Invisible inputs */}
@@ -385,7 +460,7 @@ const Sidebar: React.FC = () => {
       {/* Header Branding */}
       <div style={{ padding: '20px 20px 12px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 900, fontSize: '20px', letterSpacing: '-0.5px', color: '#1c1c1e' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 900, fontSize: '20px', letterSpacing: '-0.5px', color: 'var(--text-primary)' }}>
             <img src={logo} alt="Logo" style={{ width: '24px', height: '24px' }} />
             Chlio
             <span style={{ fontSize: '10px', backgroundColor: 'rgba(10, 122, 255, 0.1)', padding: '2px 6px', borderRadius: '6px', fontWeight: 800, color: '#0a7aff' }}>OS</span>
@@ -394,7 +469,7 @@ const Sidebar: React.FC = () => {
       </div>
       
       {/* Main Suite Navigation */}
-      <div style={{ padding: '0 12px 16px', borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
+      <div style={{ padding: '0 12px 16px', borderBottom: '1px solid var(--border-subtle)' }}>
         {renderNavItem('home', 'Dashboard', 
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
         )}
@@ -418,7 +493,7 @@ const Sidebar: React.FC = () => {
         {/* Projects Section */}
         <div style={{ marginBottom: '24px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', padding: '0 8px' }}>
-            <span style={{ fontWeight: 800, fontSize: '11px', color: '#8e8e93', letterSpacing: '0.5px' }}>PROJECTS</span>
+            <span style={{ fontWeight: 800, fontSize: '11px', color: 'var(--text-secondary)', letterSpacing: '0.5px' }}>PROJECTS</span>
             <button onClick={handleAddNewProject} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#0a7aff', fontWeight: 800, fontSize: '14px' }} title="Create Project">+</button>
           </div>
           {projects.map(proj => {
@@ -439,7 +514,7 @@ const Sidebar: React.FC = () => {
                   cursor: 'pointer',
                   fontSize: '13px',
                   fontWeight: 600,
-                  color: isSelected ? proj.color : '#1c1c1e',
+                  color: isSelected ? proj.color : 'var(--text-primary)',
                   backgroundColor: isSelected ? `rgba(${parseInt(proj.color.slice(1,3),16) || 10}, ${parseInt(proj.color.slice(3,5),16) || 122}, ${parseInt(proj.color.slice(5,7),16) || 255}, 0.08)` : 'transparent',
                   marginBottom: '2px',
                   transition: 'all 0.2s'
@@ -448,19 +523,19 @@ const Sidebar: React.FC = () => {
               >
                 <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: proj.color }} />
                 <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{proj.name}</span>
-                <span style={{ fontSize: '10px', color: '#8e8e93', fontWeight: 700 }}>
+                <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 700 }}>
                   {files.filter(f => f.projectId === proj.id).length}
                 </span>
               </div>
             );
           })}
           {projects.length === 0 && (
-            <div style={{ fontSize: '12px', color: '#8e8e93', fontStyle: 'italic', padding: '8px' }}>No active projects. Click + to create.</div>
+            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', fontStyle: 'italic', padding: '8px' }}>No active projects. Click + to create.</div>
           )}
         </div>
 
         {/* Nextcloud Config Collapsible Section */}
-        <div style={{ marginBottom: '20px', background: 'rgba(0,0,0,0.03)', borderRadius: '14px', padding: '8px' }}>
+        <div style={{ marginBottom: '20px', background: 'var(--bg-inset)', borderRadius: '14px', padding: '8px' }}>
           <div 
             onClick={() => setShowNextcloudPanel(!showNextcloudPanel)}
             style={{ 
@@ -469,7 +544,7 @@ const Sidebar: React.FC = () => {
               alignItems: 'center', 
               fontWeight: 800, 
               fontSize: '11px', 
-              color: '#8e8e93', 
+              color: 'var(--text-secondary)', 
               cursor: 'pointer',
               padding: '6px 8px'
             }}
@@ -484,38 +559,59 @@ const Sidebar: React.FC = () => {
                 value={nextcloudUrl}
                 onChange={(e) => saveNextcloudConfig(e.target.value, nextcloudUsername)}
                 placeholder="Server URL"
-                style={{ width: '100%', borderRadius: '8px', border: '1px solid rgba(0,0,0,0.1)', padding: '6px 8px', fontSize: '12px', background: 'rgba(255,255,255,0.7)' }}
+                style={{ width: '100%', borderRadius: '8px', border: '1px solid var(--border-color)', padding: '6px 8px', fontSize: '12px', background: 'var(--bg-input)' }}
               />
               <input
                 value={nextcloudUsername}
                 onChange={(e) => saveNextcloudConfig(nextcloudUrl, e.target.value)}
                 placeholder="Username"
-                style={{ width: '100%', borderRadius: '8px', border: '1px solid rgba(0,0,0,0.1)', padding: '6px 8px', fontSize: '12px', background: 'rgba(255,255,255,0.7)' }}
+                style={{ width: '100%', borderRadius: '8px', border: '1px solid var(--border-color)', padding: '6px 8px', fontSize: '12px', background: 'var(--bg-input)' }}
               />
               <input
                 type="password"
                 value={nextcloudPassword}
                 onChange={(e) => setNextcloudPassword(e.target.value)}
                 placeholder="Password"
-                style={{ width: '100%', borderRadius: '8px', border: '1px solid rgba(0,0,0,0.1)', padding: '6px 8px', fontSize: '12px', background: 'rgba(255,255,255,0.7)' }}
+                style={{ width: '100%', borderRadius: '8px', border: '1px solid var(--border-color)', padding: '6px 8px', fontSize: '12px', background: 'var(--bg-input)' }}
               />
               <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
                 {nextcloudConnected && (
-                  <button onClick={disconnectCloud} style={{ flex: 1, border: '1px solid rgba(0,0,0,0.1)', borderRadius: '8px', background: '#fff', padding: '6px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}>
+                  <button onClick={disconnectCloud} style={{ flex: 1, border: '1px solid var(--border-color)', borderRadius: '8px', background: 'var(--btn-secondary-bg)', padding: '6px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}>
                     Disconnect
                   </button>
                 )}
                 <button onClick={connectCloud} disabled={isConnecting} style={{ flex: 2, border: 'none', borderRadius: '8px', background: '#0a7aff', color: 'white', padding: '6px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}>
-                  {nextcloudConnected ? 'Refreshed' : 'Connect'}
+                  {isConnecting ? 'Connecting…' : nextcloudConnected ? 'Refresh' : 'Connect'}
                 </button>
               </div>
-              <div style={{ fontSize: '10px', color: nextcloudConnected ? '#34c759' : '#8e8e93', marginTop: '2px', textAlign: 'center' }}>
+              <div style={{ fontSize: '10px', color: nextcloudConnected ? 'var(--success-color)' : 'var(--text-secondary)', marginTop: '2px', textAlign: 'center' }}>
                 {connectionLabel}
               </div>
+              <div style={{ fontSize: 10, color: 'var(--text-secondary)', textAlign: 'center' }}>
+                Papers: {nextcloudPapersPath} · Sync: {nextcloudSyncPath}
+              </div>
+              {nextcloudConnected && (
+                <div style={{ display: 'flex', gap: 4 }}>
+                  <button onClick={() => setFolderPickerMode('papers')} style={{ flex: 1, fontSize: 10, padding: 6, borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--btn-secondary-bg)', cursor: 'pointer', fontWeight: 700 }}>Browse Papers Folder</button>
+                  <button onClick={() => setFolderPickerMode('sync')} style={{ flex: 1, fontSize: 10, padding: 6, borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--btn-secondary-bg)', cursor: 'pointer', fontWeight: 700 }}>Browse Sync Folder</button>
+                </div>
+              )}
+              {nextcloudConnected && (
+                <button onClick={async () => {
+                  try {
+                    const papers = await getPapersFromNextcloud(nextcloudPapersPath);
+                    setRemotePapers(papers);
+                  } catch (err) {
+                    alert(err instanceof Error ? err.message : 'Failed to refresh papers');
+                  }
+                }} style={{ width: '100%', fontSize: 10, padding: 6, borderRadius: 8, border: 'none', background: 'rgba(10,122,255,0.1)', color: '#0a7aff', cursor: 'pointer', fontWeight: 700 }}>
+                  Refresh Papers List
+                </button>
+              )}
               
               {nextcloudConnected && remotePapers.length > 0 && (
-                <div style={{ background: 'rgba(255,255,255,0.8)', borderRadius: '10px', padding: '8px', marginTop: '6px', maxHeight: '150px', overflowY: 'auto' }}>
-                  <div style={{ fontWeight: 800, marginBottom: '6px', fontSize: '10px', color: '#8e8e93' }}>Remote papers in Cloud</div>
+                <div style={{ background: 'var(--bg-surface)', borderRadius: '10px', padding: '8px', marginTop: '6px', maxHeight: '150px', overflowY: 'auto' }}>
+                  <div style={{ fontWeight: 800, marginBottom: '6px', fontSize: '10px', color: 'var(--text-secondary)' }}>Remote papers in Cloud</div>
                   {remotePapers.map((paper) => (
                     <div key={paper.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', padding: '6px 0', borderBottom: '1px solid rgba(0,0,0,0.04)' }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
@@ -532,18 +628,64 @@ const Sidebar: React.FC = () => {
           )}
         </div>
 
+        {/* Tags Section */}
+        <div style={{ marginBottom: '20px', background: 'var(--bg-inset)', borderRadius: '14px', padding: '8px' }}>
+          <div onClick={() => setShowTagsPanel(!showTagsPanel)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontWeight: 800, fontSize: '11px', color: 'var(--text-secondary)', cursor: 'pointer', padding: '6px 8px' }}>
+            <span>🏷 RESEARCH TAGS</span>
+            <span>{showTagsPanel ? '▲' : '▼'}</span>
+          </div>
+          {showTagsPanel && (
+            <div style={{ padding: '8px 4px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <input
+                value={tagSearchQuery}
+                onChange={e => setTagSearchQuery(e.target.value)}
+                placeholder="Search by tag or filename..."
+                style={{ width: '100%', borderRadius: 8, border: '1px solid var(--border-color)', padding: '6px 8px', fontSize: 12 }}
+              />
+              <button onClick={handleCreateTag} style={{ border: 'none', borderRadius: 8, background: '#0a7aff', color: 'white', padding: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>+ Create Tag</button>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                {tags.map(t => (
+                  <span key={t.id} style={{ fontSize: 10, padding: '4px 8px', borderRadius: 8, background: 'rgba(10,122,255,0.1)', color: '#0a7aff', fontWeight: 700, cursor: 'pointer' }}
+                    onClick={() => setTagSearchQuery(t.name)}>
+                    {t.name}
+                  </span>
+                ))}
+              </div>
+              {taggingFileId && (
+                <div style={{ background: 'var(--bg-surface)', borderRadius: 10, padding: 8 }}>
+                  <div style={{ fontSize: 10, fontWeight: 800, marginBottom: 6 }}>Assign tags to file</div>
+                  {tags.map(t => {
+                    const file = files.find(f => f.id === taggingFileId);
+                    const selected = (file?.tags || []).includes(t.id);
+                    return (
+                      <button key={t.id} onClick={() => {
+                        if (!file) return;
+                        const next = selected ? (file.tags || []).filter(id => id !== t.id) : [...(file.tags || []), t.id];
+                        setFileTags(file.id, next);
+                      }} style={{ margin: 2, fontSize: 10, padding: '4px 8px', borderRadius: 6, border: 'none', cursor: 'pointer', background: selected ? 'var(--accent-color)' : 'var(--bg-inset)', color: selected ? 'white' : 'var(--text-muted)', fontWeight: 700 }}>
+                        {t.name}
+                      </button>
+                    );
+                  })}
+                  <button onClick={() => setTaggingFileId(null)} style={{ marginTop: 6, fontSize: 10, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text-secondary)' }}>Done</button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
         {/* Notebooks File Explorer */}
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', padding: '0 8px' }}>
-            <span style={{ fontWeight: 800, fontSize: '11px', color: '#8e8e93', letterSpacing: '0.5px' }}>NOTEBOOKS</span>
+            <span style={{ fontWeight: 800, fontSize: '11px', color: 'var(--text-secondary)', letterSpacing: '0.5px' }}>NOTEBOOKS</span>
             <div style={{ display: 'flex', gap: '8px' }}>
                <button onClick={() => triggerUpload(null)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0 }} title="Upload File">
-                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8e8e93" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
                </button>
                <button onClick={() => triggerFolderUpload(null)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, fontSize: '11px' }} title="Upload Folder">
                  📁
                </button>
-               <button onClick={(e) => handleNewFolder(null, e)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, color: '#8e8e93' }} title="Add Folder">
+               <button onClick={(e) => handleNewFolder(null, e)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, color: 'var(--text-secondary)' }} title="Add Folder">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14"/></svg>
                </button>
             </div>
@@ -552,8 +694,8 @@ const Sidebar: React.FC = () => {
           <div style={{ padding: '0 4px' }}>
             {renderFolder(null, 0)}
             
-            {files.length === 0 && folders.length === 0 && (
-               <div style={{ fontSize: '12px', color: '#8e8e93', fontStyle: 'italic', padding: '8px' }}>No notes found. Create a folder or upload a note!</div>
+            {filteredFiles.length === 0 && folders.length === 0 && (
+               <div style={{ fontSize: '12px', color: 'var(--text-secondary)', fontStyle: 'italic', padding: '8px' }}>{tagSearchQuery ? 'No files match your search.' : 'No notes found. Create a folder or upload a note!'}</div>
             )}
           </div>
         </div>
@@ -564,8 +706,8 @@ const Sidebar: React.FC = () => {
       <div 
         style={{ 
           padding: '16px', 
-          borderTop: '1px solid rgba(255,255,255,0.25)', 
-          background: 'rgba(255,255,255,0.2)', 
+          borderTop: '1px solid var(--border-subtle)', 
+          background: 'var(--bg-inset)', 
           display: 'flex', 
           flexDirection: 'column', 
           gap: '8px'
@@ -575,13 +717,13 @@ const Sidebar: React.FC = () => {
           onClick={rotateBackground}
           style={{
             width: '100%',
-            background: '#ffffff',
-            border: '1px solid rgba(0,0,0,0.06)',
+            background: 'var(--btn-secondary-bg)',
+            border: '1px solid var(--border-subtle)',
             borderRadius: '12px',
             padding: '10px',
             fontSize: '12px',
             fontWeight: 800,
-            color: '#1c1c1e',
+            color: 'var(--text-primary)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -591,14 +733,38 @@ const Sidebar: React.FC = () => {
           }}
           className="btn-animate"
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0a7aff" strokeWidth="2.5"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent-color)" strokeWidth="2.5"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
           Change Wallpaper
         </button>
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '10px', color: '#8e8e93', fontWeight: 600 }}>
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600 }}>
           <span>TomiTsuma Notes © 2026</span>
         </div>
       </div>
 
+      {folderPickerMode && (
+        <NextcloudFolderPicker
+          title={folderPickerMode === 'papers' ? 'Select Papers Folder' : 'Select Sync Upload Folder'}
+          currentPath={folderPickerMode === 'papers' ? nextcloudPapersPath : nextcloudSyncPath}
+          onSelect={async (path) => {
+            if (folderPickerMode === 'papers') {
+              setNextcloudPaths(path, nextcloudSyncPath);
+              setPapersPath(path);
+              if (nextcloudConnected) {
+                try {
+                  const papers = await getPapersFromNextcloud(path);
+                  setRemotePapers(papers);
+                } catch (err) {
+                  alert(err instanceof Error ? err.message : 'Failed to list papers');
+                }
+              }
+            } else {
+              setNextcloudPaths(nextcloudPapersPath, path);
+              setSyncPath(path);
+            }
+          }}
+          onClose={() => setFolderPickerMode(null)}
+        />
+      )}
     </div>
   );
 };

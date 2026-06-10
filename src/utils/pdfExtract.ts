@@ -1,8 +1,10 @@
-import * as pdfjs from 'pdfjs-dist';
+import { pdfjs } from 'react-pdf';
 
 export async function extractPdfText(dataUrl: string): Promise<string> {
-  // Bind dynamic Unpkg resolution preventing internal build conflicts
-  pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+  pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+    'pdfjs-dist/build/pdf.worker.min.mjs',
+    import.meta.url,
+  ).toString();
 
   let uint8Array: Uint8Array;
   const base64 = dataUrl.split('base64,')[1];

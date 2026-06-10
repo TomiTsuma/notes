@@ -6,7 +6,7 @@ services:
     image: ttsu/chlio
     container_name: clio-app
     ports:
-      - "8191:8191"
+      - "4191:4191"
     restart: unless-stopped
     environment:
       - NODE_ENV=production

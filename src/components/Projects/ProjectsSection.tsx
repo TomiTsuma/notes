@@ -102,7 +102,7 @@ const ProjectsSection: React.FC = () => {
         }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h3 style={{ fontSize: '16px', fontWeight: 800, color: '#1c1c1e' }}>Projects</h3>
+          <h3 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)' }}>Projects</h3>
           <button 
             onClick={() => setActiveView('home')}
             style={{ border: 'none', background: 'transparent', color: '#0a7aff', fontWeight: 800, fontSize: '12px', cursor: 'pointer' }}
@@ -135,10 +135,10 @@ const ProjectsSection: React.FC = () => {
               >
                 <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: proj.color }} />
                 <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ fontSize: '13px', fontWeight: 700, color: '#1c1c1e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {proj.name}
                   </div>
-                  <div style={{ fontSize: '11px', color: '#8e8e93', marginTop: '2px' }}>
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
                     {files.filter(f => f.projectId === proj.id).length} notes
                   </div>
                 </div>
@@ -169,13 +169,13 @@ const ProjectsSection: React.FC = () => {
                 <input 
                   value={editName}
                   onChange={e => setEditName(e.target.value)}
-                  style={{ fontSize: '24px', fontWeight: 900, borderRadius: '8px', border: '1px solid rgba(0,0,0,0.1)', padding: '6px 12px', maxWidth: '300px' }}
+                  style={{ fontSize: '24px', fontWeight: 900, borderRadius: '8px', border: '1px solid var(--border-color)', padding: '6px 12px', maxWidth: '300px' }}
                 />
                 <textarea 
                   value={editDesc}
                   onChange={e => setEditDesc(e.target.value)}
                   rows={2}
-                  style={{ fontSize: '14px', borderRadius: '8px', border: '1px solid rgba(0,0,0,0.1)', padding: '6px 12px', resize: 'none', fontFamily: 'inherit' }}
+                  style={{ fontSize: '14px', borderRadius: '8px', border: '1px solid var(--border-color)', padding: '6px 12px', resize: 'none', fontFamily: 'inherit' }}
                 />
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                   {colors.map(c => (
@@ -187,7 +187,7 @@ const ProjectsSection: React.FC = () => {
                   ))}
                 </div>
                 <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
-                  <button onClick={() => setIsEditing(false)} style={{ border: 'none', padding: '8px 16px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', backgroundColor: '#f0f0f5', color: '#1c1c1e' }}>Cancel</button>
+                  <button onClick={() => setIsEditing(false)} style={{ border: 'none', padding: '8px 16px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', backgroundColor: '#f0f0f5', color: 'var(--text-primary)' }}>Cancel</button>
                   <button onClick={handleSaveEdit} style={{ border: 'none', padding: '8px 16px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', backgroundColor: activeProj.color, color: 'white' }}>Save Changes</button>
                 </div>
               </div>
@@ -195,12 +195,12 @@ const ProjectsSection: React.FC = () => {
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <div style={{ width: '14px', height: '14px', borderRadius: '50%', backgroundColor: activeProj.color }} />
-                  <h2 style={{ fontSize: '26px', fontWeight: 900, color: '#1c1c1e', letterSpacing: '-0.5px' }}>{activeProj.name}</h2>
+                  <h2 style={{ fontSize: '26px', fontWeight: 900, color: 'var(--text-primary)', letterSpacing: '-0.5px' }}>{activeProj.name}</h2>
                 </div>
-                <p style={{ fontSize: '14px', color: '#48484a', marginTop: '8px', lineHeight: 1.5, maxWidth: '600px' }}>
+                <p style={{ fontSize: '14px', color: 'var(--text-muted)', marginTop: '8px', lineHeight: 1.5, maxWidth: '600px' }}>
                   {activeProj.description || 'No description provided for this project.'}
                 </p>
-                <div style={{ fontSize: '11px', color: '#8e8e93', fontWeight: 700, marginTop: '12px' }}>
+                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 700, marginTop: '12px' }}>
                   CREATED ON {new Date(activeProj.createdAt).toLocaleDateString()}
                 </div>
               </div>
@@ -210,7 +210,7 @@ const ProjectsSection: React.FC = () => {
               <div style={{ display: 'flex', gap: '8px' }}>
                 <button 
                   onClick={startEditing}
-                  style={{ border: 'none', background: 'rgba(0,0,0,0.03)', borderRadius: '10px', padding: '8px 14px', fontSize: '12px', fontWeight: 700, color: '#48484a', cursor: 'pointer' }}
+                  style={{ border: 'none', background: 'var(--bg-inset)', borderRadius: '10px', padding: '8px 14px', fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)', cursor: 'pointer' }}
                   className="btn-animate"
                 >
                   Edit details
@@ -229,12 +229,12 @@ const ProjectsSection: React.FC = () => {
           {/* Quick Metrics Row */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px' }}>
             <div style={{ backgroundColor: 'rgba(0,0,0,0.02)', borderRadius: '14px', padding: '16px' }}>
-              <div style={{ fontSize: '11px', fontWeight: 800, color: '#8e8e93', textTransform: 'uppercase' }}>Notebooks</div>
-              <div style={{ fontSize: '24px', fontWeight: 900, color: '#1c1c1e', marginTop: '6px' }}>{projectNotes.length}</div>
+              <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Notebooks</div>
+              <div style={{ fontSize: '24px', fontWeight: 900, color: 'var(--text-primary)', marginTop: '6px' }}>{projectNotes.length}</div>
             </div>
             <div style={{ backgroundColor: 'rgba(0,0,0,0.02)', borderRadius: '14px', padding: '16px' }}>
-              <div style={{ fontSize: '11px', fontWeight: 800, color: '#8e8e93', textTransform: 'uppercase' }}>Kanban Tasks</div>
-              <div style={{ fontSize: '24px', fontWeight: 900, color: '#1c1c1e', marginTop: '6px' }}>{projectTasks.length}</div>
+              <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Kanban Tasks</div>
+              <div style={{ fontSize: '24px', fontWeight: 900, color: 'var(--text-primary)', marginTop: '6px' }}>{projectTasks.length}</div>
             </div>
             <div style={{ backgroundColor: 'rgba(0,0,0,0.02)', borderRadius: '14px', padding: '16px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
               <button 
@@ -253,7 +253,7 @@ const ProjectsSection: React.FC = () => {
           {/* Notebooks Sub-section */}
           <div style={{ marginTop: '12px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <h3 style={{ fontSize: '16px', fontWeight: 800, color: '#1c1c1e' }}>Linked Notes & Files</h3>
+              <h3 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)' }}>Linked Notes & Files</h3>
               <button 
                 onClick={() => setShowNoteForm(true)}
                 style={{ border: 'none', background: 'rgba(10, 122, 255, 0.08)', color: '#0a7aff', fontWeight: 800, fontSize: '12px', padding: '8px 14px', borderRadius: '10px', cursor: 'pointer' }}
@@ -273,12 +273,12 @@ const ProjectsSection: React.FC = () => {
                     onChange={e => setNewNoteName(e.target.value)}
                     placeholder="Note title (e.g. Brainstorming)"
                     required
-                    style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid rgba(0,0,0,0.1)', fontSize: '13px' }}
+                    style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', fontSize: '13px' }}
                   />
                   <select 
                     value={newNoteType}
                     onChange={e => setNewNoteType(e.target.value as any)}
-                    style={{ padding: '10px', borderRadius: '8px', border: '1px solid rgba(0,0,0,0.1)', fontSize: '13px', backgroundColor: '#fff' }}
+                    style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', fontSize: '13px', backgroundColor: '#fff' }}
                   >
                     <option value="md">Markdown (.md)</option>
                     <option value="txt">Plain Text (.txt)</option>
@@ -308,8 +308,8 @@ const ProjectsSection: React.FC = () => {
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z"/></svg>
                     </div>
                     <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ fontSize: '13px', fontWeight: 800, color: '#1c1c1e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</div>
-                      <div style={{ fontSize: '10px', color: '#8e8e93', marginTop: '2px', fontWeight: 600 }}>{file.type.toUpperCase()} File</div>
+                      <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</div>
+                      <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '2px', fontWeight: 600 }}>{file.type.toUpperCase()} File</div>
                     </div>
                   </div>
                   <div 
@@ -321,7 +321,7 @@ const ProjectsSection: React.FC = () => {
                     }}
                     style={{
                       fontSize: '11px',
-                      color: '#8e8e93',
+                      color: 'var(--text-secondary)',
                       alignSelf: 'flex-end',
                       cursor: 'pointer',
                       fontWeight: 700
@@ -334,7 +334,7 @@ const ProjectsSection: React.FC = () => {
               ))}
 
               {projectNotes.length === 0 && (
-                <div style={{ gridColumn: '1/-1', padding: '32px', textAlign: 'center', color: '#8e8e93', fontStyle: 'italic', fontSize: '13px' }}>
+                <div style={{ gridColumn: '1/-1', padding: '32px', textAlign: 'center', color: 'var(--text-secondary)', fontStyle: 'italic', fontSize: '13px' }}>
                   No notes linked to this project yet. Link a file from the list below or click '+ Add Note'.
                 </div>
               )}
@@ -344,7 +344,7 @@ const ProjectsSection: React.FC = () => {
           {/* Linking Existing Unsorted Inbox Notes */}
           {inboxNotes.length > 0 && (
             <div style={{ marginTop: '16px', borderTop: '1px solid rgba(0,0,0,0.06)', paddingTop: '24px' }}>
-              <h3 style={{ fontSize: '14px', fontWeight: 800, color: '#48484a', marginBottom: '12px' }}>📥 Link Unsorted Inbox Notes</h3>
+              <h3 style={{ fontSize: '14px', fontWeight: 800, color: 'var(--text-muted)', marginBottom: '12px' }}>📥 Link Unsorted Inbox Notes</h3>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
                 {inboxNotes.map(file => (
                   <button
@@ -357,7 +357,7 @@ const ProjectsSection: React.FC = () => {
                       padding: '8px 12px',
                       fontSize: '12px',
                       fontWeight: 700,
-                      color: '#1c1c1e',
+                      color: 'var(--text-primary)',
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
@@ -374,7 +374,7 @@ const ProjectsSection: React.FC = () => {
 
         </div>
       ) : (
-        <div style={{ flex: 1, padding: '40px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#8e8e93', fontStyle: 'italic' }}>
+        <div style={{ flex: 1, padding: '40px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', fontStyle: 'italic' }}>
           No active projects found. Head to the Dashboard to create one!
         </div>
       )}

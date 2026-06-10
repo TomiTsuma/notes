@@ -23,7 +23,7 @@ function getSvgPathFromStroke(stroke: number[][]) {
 type Box = { x: number, y: number, w: number, h: number };
 
 const DrawingCanvas: React.FC = () => {
-  const { activeTool, brushColor, brushSize, activeDocumentId, annotations, setStrokes, translateStrokes, addTextElement } = useAppStore();
+  const { activeTool, brushColor, brushSize, activeDocumentId, annotations, setStrokes, translateStrokes, addTextElement, setFocusedTextId } = useAppStore();
   
   const strokes = activeDocumentId && annotations[activeDocumentId] ? annotations[activeDocumentId].strokes : [];
   
@@ -40,15 +40,22 @@ const DrawingCanvas: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const holdTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  const getCoords = (clientX: number, clientY: number) => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return null;
+    const scrollParent = containerRef.current?.closest('[data-scroll-container]') as HTMLElement | null;
+    const scrollTop = scrollParent?.scrollTop ?? 0;
+    return { x: clientX - rect.left, y: clientY - rect.top + scrollTop };
+  };
+
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    if ((e.target as Element).closest('.text-element')) return;
     (e.target as Element).setPointerCapture(e.pointerId);
     if (!activeDocumentId) return;
-    const rect = containerRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    
+    const coords = getCoords(e.clientX, e.clientY);
+    if (!coords) return;
+    const { x, y } = coords;
     const pressure = e.pointerType === 'pen' ? e.pressure : 0.5;
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
     
     if (activeTool === 'select') {
       if (lassoBox && x >= Math.min(lassoBox.x, lassoBox.x + lassoBox.w) && x <= Math.max(lassoBox.x, lassoBox.x + lassoBox.w) 
@@ -64,13 +71,15 @@ const DrawingCanvas: React.FC = () => {
     }
 
     if (activeTool === 'text' || activeTool === 'sticky') {
+      const newId = uuidv4();
       addTextElement(activeDocumentId, {
-        id: uuidv4(),
+        id: newId,
         x,
         y,
         text: '',
         type: activeTool
       });
+      setFocusedTextId(newId);
       setLassoBox(null);
       setSelectedIndices([]);
       return;
@@ -89,18 +98,16 @@ const DrawingCanvas: React.FC = () => {
         setSnapMode(true);
       }, 400); 
     }
-  }, [activeTool, lassoBox, activeDocumentId, addTextElement]);
+  }, [activeTool, lassoBox, activeDocumentId, addTextElement, setFocusedTextId]);
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     if (e.buttons !== 1) return;
     if (!activeDocumentId) return;
 
-    const rect = containerRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    
+    const coords = getCoords(e.clientX, e.clientY);
+    if (!coords) return;
+    const { x, y } = coords;
     const pressure = e.pointerType === 'pen' ? e.pressure : 0.5;
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
     
     if (activeTool === 'select') {
       if (isDraggingLasso && dragStartRef.current && lassoBox) {
@@ -169,11 +176,12 @@ const DrawingCanvas: React.FC = () => {
     if (activeTool === 'eraser') return;
     
     if (currentStroke.length > 0) {
+      const tool: Stroke['tool'] = activeTool === 'highlighter' ? 'highlighter' : activeTool === 'ruler' ? 'ruler' : 'pen';
       setStrokes(activeDocumentId, prev => [...prev, {
         points: currentStroke,
         color: brushColor,
         size: activeTool === 'highlighter' ? 24 : brushSize,
-        tool: activeTool === 'highlighter' ? 'highlighter' : 'pen'
+        tool,
       }]);
       setCurrentStroke([]);
       setSnapMode(false);
@@ -226,7 +234,7 @@ const DrawingCanvas: React.FC = () => {
   };
 
   const highlighters = strokes.map((s, i) => ({ s, i })).filter(({ s }) => s.tool === 'highlighter');
-  const pens = strokes.map((s, i) => ({ s, i })).filter(({ s }) => s.tool === 'pen');
+  const pens = strokes.map((s, i) => ({ s, i })).filter(({ s }) => s.tool === 'pen' || s.tool === 'ruler');
 
   const activeStrokeData = currentStroke.length > 0 && activeTool !== 'select' ? {
     points: currentStroke,

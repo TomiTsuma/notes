@@ -6,15 +6,27 @@ export default defineConfig({
   plugins: [react()],
   server: {
     host: '0.0.0.0',
-    port: 5173,
+    port: 4191,
     cors: true,
     proxy: {
       '/api/ollama': {
-        target: 'http://159.203.35.39:11434',
+        target: 'http://localhost:11434',
         changeOrigin: true,
         secure: false,
         rewrite: (path) => path.replace(/^\/api\/ollama/, '/api/generate'),
-      }
+      },
+      '/api/nextcloud': {
+        target: 'http://100.100.133.10:30027',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/api\/nextcloud/, ''),
+        configure: (proxy) => {
+          proxy.on('proxyRes', (proxyRes) => {
+            // Prevent browser-native auth dialogs that loop when credentials are entered in-app.
+            delete proxyRes.headers['www-authenticate'];
+          });
+        },
+      },
     }
   },
   build: {

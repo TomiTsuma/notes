@@ -22,6 +22,6 @@ COPY --from=builder /app/dist ./dist
 # Install a simple HTTP server to serve the static files
 RUN npm install -g serve
 
-EXPOSE 8191
+EXPOSE 4191
 # Serve the static files on port 8191, binding to 0.0.0.0
-CMD ["serve", "-s", "dist", "-l", "tcp://0.0.0.0:8191"]
+CMD ["serve", "-s", "dist", "-l", "tcp://0.0.0.0:4191"]

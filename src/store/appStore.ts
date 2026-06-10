@@ -51,7 +51,7 @@ export interface Stroke {
   points: Point[];
   color: string;
   size: number;
-  tool: 'pen' | 'highlighter';
+  tool: 'pen' | 'highlighter' | 'ruler';
 }
 
 export interface Paper {
@@ -66,14 +66,22 @@ export interface Folder {
   parentId: string | null;
 }
 
+export interface Tag {
+  id: string;
+  name: string;
+  color?: string;
+  createdAt: string;
+}
+
 export interface NoteFile {
   id: string;
   name: string;
   type: string;
   folderId: string | null;
-  dataUrl?: string; // Securely storing the PDF natively encoded in base 64 as standard state flow
-  projectId?: string | null; // Associated project ID
-  remotePath?: string; // Path on Nextcloud for persistence
+  dataUrl?: string;
+  projectId?: string | null;
+  remotePath?: string;
+  tags?: string[];
 }
 
 export interface SmartNoteSection {
@@ -106,14 +114,18 @@ export interface KanbanTask {
   createdAt: string;
 }
 
+export type CalendarViewMode = 'day' | 'week' | 'month';
+
 export interface CalendarEvent {
   id: string;
   title: string;
   description: string;
-  date: string; // YYYY-MM-DD
-  startTime: string; // HH:MM
-  endTime: string; // HH:MM
+  date: string;
+  startTime: string;
+  endTime: string;
   projectId: string | null;
+  color?: string;
+  completed?: boolean;
   createdAt: string;
 }
 
@@ -135,6 +147,7 @@ interface AppState {
   activeTool: ToolType;
   brushColor: string;
   brushSize: number;
+  focusedTextId: string | null;
   
   folders: Folder[];
   files: NoteFile[];
@@ -142,19 +155,25 @@ interface AppState {
   annotations: Record<string, DocumentAnnotations>;
   
   papers: Paper[];
+  tags: Tag[];
+  tagSearchQuery: string;
   nextcloudUrl: string;
   nextcloudUsername: string;
   nextcloudConnected: boolean;
   nextcloudStatus: 'idle' | 'connecting' | 'connected' | 'failed';
   nextcloudError: string | null;
+  nextcloudPapersPath: string;
+  nextcloudSyncPath: string;
 
   isRecording: boolean;
   showRightPanel: boolean;
 
-  // New Productivity Suite State
   activeView: 'home' | 'projects' | 'kanban' | 'calendar' | 'canvas';
   selectedProjectId: string | null;
   currentBackground: string;
+  theme: 'light' | 'dark';
+  calendarViewMode: CalendarViewMode;
+  selectedCalendarDate: string;
   projects: Project[];
   kanbanTasks: KanbanTask[];
   calendarEvents: CalendarEvent[];
@@ -170,10 +189,19 @@ interface AppState {
   deleteFolder: (id: string) => void;
   deleteFile: (id: string) => void;
   updateFolder: (id: string, name: string) => void;
-  updateFile: (id: string, name: string) => void;
+  updateFile: (id: string, updated: Partial<NoteFile>) => void;
   setActiveDocument: (id: string | null) => void;
+  setFocusedTextId: (id: string | null) => void;
   setNextcloudConfig: (url: string, username: string) => void;
   setNextcloudConnectionState: (connected: boolean, status: 'idle' | 'connecting' | 'connected' | 'failed', error?: string | null) => void;
+  setNextcloudPaths: (papersPath: string, syncPath: string) => void;
+  addTag: (tag: Tag) => void;
+  updateTag: (id: string, updated: Partial<Tag>) => void;
+  deleteTag: (id: string) => void;
+  setFileTags: (fileId: string, tagIds: string[]) => void;
+  setTagSearchQuery: (query: string) => void;
+  setCalendarViewMode: (mode: CalendarViewMode) => void;
+  setSelectedCalendarDate: (date: string) => void;
 
   toggleRecording: () => void;
   toggleRightPanel: () => void;
@@ -203,6 +231,7 @@ interface AppState {
   addChatMessage: (docOrProjId: string, message: ChatMessage) => void;
   clearChatHistory: (docOrProjId: string) => void;
   rotateBackground: () => void;
+  toggleTheme: () => void;
   updateStreak: (streak: Partial<UserStreak>) => void;
   associateFileToProject: (fileId: string, projectId: string | null) => void;
 }
@@ -213,6 +242,7 @@ export const useAppStore = create<AppState>()(
       activeTool: 'pen',
       brushColor: '#1c1c1e',
       brushSize: 4,
+      focusedTextId: null,
       
       folders: [],
       files: [
@@ -234,16 +264,22 @@ export const useAppStore = create<AppState>()(
         { id: '1', title: 'Attention Is All You Need', authors: 'Vaswani et al.' },
         { id: '2', title: 'ResNet: Deep Residual Learning for Image Recognition', authors: 'He et al.' },
       ],
+      tags: [],
+      tagSearchQuery: '',
       nextcloudUrl: 'http://100.100.133.10:30027',
-      nextcloudUsername: '',
+      nextcloudUsername: 'aeacus',
       nextcloudConnected: false,
       nextcloudStatus: 'idle',
       nextcloudError: null,
+      nextcloudPapersPath: '/Papers',
+      nextcloudSyncPath: '/Chlio',
 
-      // New Productivity State Init
       activeView: 'home',
       selectedProjectId: null,
       currentBackground: '/bkg1.jpeg',
+      theme: 'light',
+      calendarViewMode: 'week',
+      selectedCalendarDate: new Date().toISOString().split('T')[0],
       projects: [
         { id: 'proj-1', name: 'Molecular Gene Research', description: 'Exploring Graph VQ-Transformer methods', color: '#0a7aff', createdAt: new Date().toISOString() },
         { id: 'proj-2', name: 'Deep Learning Studies', description: 'Investigating standard architectures like Attention and ResNet', color: '#34c759', createdAt: new Date().toISOString() }
@@ -254,7 +290,7 @@ export const useAppStore = create<AppState>()(
         { id: 'task-3', projectId: 'proj-2', title: 'Replicate ResNet', description: 'Implement a ResNet50 in PyTorch.', status: 'done', priority: 'low', dueDate: new Date().toISOString().split('T')[0], createdAt: new Date().toISOString() }
       ],
       calendarEvents: [
-        { id: 'ev-1', title: 'Weekly Project Review', description: 'Going over deep learning summaries', date: new Date().toISOString().split('T')[0], startTime: '10:00', endTime: '11:30', projectId: 'proj-2', createdAt: new Date().toISOString() }
+        { id: 'ev-1', title: 'Weekly Project Review', description: 'Going over deep learning summaries', date: new Date().toISOString().split('T')[0], startTime: '10:00', endTime: '11:30', projectId: 'proj-2', color: '#a8c5ff', completed: false, createdAt: new Date().toISOString() }
       ],
       chatHistory: {},
       userStreak: {
@@ -289,10 +325,24 @@ export const useAppStore = create<AppState>()(
       deleteFolder: (id) => set(state => ({ folders: state.folders.filter(f => f.id !== id) })),
       deleteFile: (id) => set(state => ({ files: state.files.filter(f => f.id !== id), activeDocumentId: state.activeDocumentId === id ? null : state.activeDocumentId })),
       updateFolder: (id, name) => set(state => ({ folders: state.folders.map(f => f.id === id ? { ...f, name } : f) })),
-      updateFile: (id, updated) => set(state => ({ files: state.files.map(f => f.id === id ? { ...f, ...(updated as any) } : f) })),
+      updateFile: (id, updated) => set(state => ({ files: state.files.map(f => f.id === id ? { ...f, ...updated } : f) })),
       setActiveDocument: (id) => set({ activeDocumentId: id, activeView: id ? 'canvas' : 'home' }),
+      setFocusedTextId: (id) => set({ focusedTextId: id }),
       setNextcloudConfig: (url, username) => set({ nextcloudUrl: url, nextcloudUsername: username }),
       setNextcloudConnectionState: (connected, status, error) => set({ nextcloudConnected: connected, nextcloudStatus: status, nextcloudError: error || null }),
+      setNextcloudPaths: (papersPath, syncPath) => set({ nextcloudPapersPath: papersPath, nextcloudSyncPath: syncPath }),
+      addTag: (tag) => set(state => ({ tags: [...state.tags, tag] })),
+      updateTag: (id, updated) => set(state => ({ tags: state.tags.map(t => t.id === id ? { ...t, ...updated } : t) })),
+      deleteTag: (id) => set(state => ({
+        tags: state.tags.filter(t => t.id !== id),
+        files: state.files.map(f => ({ ...f, tags: (f.tags || []).filter(tid => tid !== id) }))
+      })),
+      setFileTags: (fileId, tagIds) => set(state => ({
+        files: state.files.map(f => f.id === fileId ? { ...f, tags: tagIds } : f)
+      })),
+      setTagSearchQuery: (query) => set({ tagSearchQuery: query }),
+      setCalendarViewMode: (mode) => set({ calendarViewMode: mode }),
+      setSelectedCalendarDate: (date) => set({ selectedCalendarDate: date }),
 
       toggleRecording: () => set(state => ({ isRecording: !state.isRecording })),
       toggleRightPanel: () => set(state => ({ showRightPanel: !state.showRightPanel })),
@@ -463,6 +513,7 @@ export const useAppStore = create<AppState>()(
         const nextIdx = Math.floor(Math.random() * 5) + 1;
         return { currentBackground: `/bkg${nextIdx}.jpeg` };
       }),
+      toggleTheme: () => set(state => ({ theme: state.theme === 'light' ? 'dark' : 'light' })),
       updateStreak: (updated) => set(state => ({ userStreak: { ...state.userStreak, ...updated } })),
       associateFileToProject: (fileId, projectId) => set(state => ({
         files: state.files.map(f => f.id === fileId ? { ...f, projectId } : f)
@@ -471,6 +522,38 @@ export const useAppStore = create<AppState>()(
     {
       name: 'clio-storage',
       storage: createJSONStorage(() => idbStorage),
+      partialize: (state) => ({
+        activeTool: state.activeTool,
+        brushColor: state.brushColor,
+        brushSize: state.brushSize,
+        folders: state.folders,
+        files: state.files,
+        activeDocumentId: state.activeDocumentId,
+        annotations: state.annotations,
+        papers: state.papers,
+        tags: state.tags,
+        tagSearchQuery: state.tagSearchQuery,
+        nextcloudUrl: state.nextcloudUrl,
+        nextcloudUsername: state.nextcloudUsername,
+        nextcloudConnected: false,
+        nextcloudStatus: 'idle' as const,
+        nextcloudError: null,
+        nextcloudPapersPath: state.nextcloudPapersPath,
+        nextcloudSyncPath: state.nextcloudSyncPath,
+        isRecording: state.isRecording,
+        showRightPanel: state.showRightPanel,
+        activeView: state.activeView,
+        selectedProjectId: state.selectedProjectId,
+        currentBackground: state.currentBackground,
+        theme: state.theme,
+        calendarViewMode: state.calendarViewMode,
+        selectedCalendarDate: state.selectedCalendarDate,
+        projects: state.projects,
+        kanbanTasks: state.kanbanTasks,
+        calendarEvents: state.calendarEvents,
+        chatHistory: state.chatHistory,
+        userStreak: state.userStreak,
+      }),
     }
   )
 );

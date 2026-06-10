@@ -57,10 +57,10 @@ const HomeDashboard: React.FC = () => {
           <div style={{ fontSize: '14px', fontWeight: 800, color: '#0a7aff', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '4px' }}>
             {getGreetingDate()}
           </div>
-          <h1 style={{ fontSize: '32px', fontWeight: 900, color: '#1c1c1e', letterSpacing: '-1px' }}>
+          <h1 style={{ fontSize: '32px', fontWeight: 900, color: 'var(--text-primary)', letterSpacing: '-1px' }}>
             Welcome back, TomiTsuma! 👋
           </h1>
-          <p style={{ fontSize: '15px', color: '#48484a', marginTop: '2px', fontWeight: 500 }}>
+          <p style={{ fontSize: '15px', color: 'var(--text-muted)', marginTop: '2px', fontWeight: 500 }}>
             Here is your productivity outline for today. All systems are online.
           </p>
         </div>
@@ -94,7 +94,7 @@ const HomeDashboard: React.FC = () => {
         {/* Streak Stats Card (inspired by streak_stats_ui.jpeg) */}
         <div className="glass-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontWeight: 800, fontSize: '15px', color: '#1c1c1e', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ fontWeight: 800, fontSize: '15px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
               🔥 Active Streak
             </span>
             <span style={{ fontSize: '12px', fontWeight: 700, backgroundColor: 'rgba(255, 149, 0, 0.12)', color: '#ff9500', padding: '4px 10px', borderRadius: '8px' }}>
@@ -113,7 +113,7 @@ const HomeDashboard: React.FC = () => {
             }}>
               {userStreak.streakCount} Days
             </div>
-            <div style={{ fontSize: '13px', color: '#48484a', fontWeight: 600, lineHeight: 1.4 }}>
+            <div style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: 600, lineHeight: 1.4 }}>
               Keep writing and completing tasks to grow your active streak streak!
             </div>
           </div>
@@ -139,7 +139,7 @@ const HomeDashboard: React.FC = () => {
                   }}>
                     ✓
                   </div>
-                  <span style={{ fontSize: '10px', color: '#8e8e93', fontWeight: 700 }}>{day}</span>
+                  <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 700 }}>{day}</span>
                 </div>
               );
             })}
@@ -149,11 +149,11 @@ const HomeDashboard: React.FC = () => {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '4px' }}>
             <div style={{ backgroundColor: 'rgba(10, 122, 255, 0.05)', borderRadius: '14px', padding: '12px', textAlign: 'center' }}>
               <div style={{ fontSize: '20px', fontWeight: 900, color: '#0a7aff' }}>{userStreak.totalTasksCompleted}</div>
-              <div style={{ fontSize: '11px', color: '#48484a', fontWeight: 700, marginTop: '2px' }}>Tasks Done</div>
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 700, marginTop: '2px' }}>Tasks Done</div>
             </div>
             <div style={{ backgroundColor: 'rgba(52, 199, 89, 0.05)', borderRadius: '14px', padding: '12px', textAlign: 'center' }}>
               <div style={{ fontSize: '20px', fontWeight: 900, color: '#34c759' }}>{userStreak.totalNotesCreated}</div>
-              <div style={{ fontSize: '11px', color: '#48484a', fontWeight: 700, marginTop: '2px' }}>Notes Logged</div>
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 700, marginTop: '2px' }}>Notes Logged</div>
             </div>
           </div>
         </div>
@@ -161,7 +161,7 @@ const HomeDashboard: React.FC = () => {
         {/* Daily Schedule Agenda */}
         <div className="glass-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', justifySelf: 'stretch' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-            <span style={{ fontWeight: 800, fontSize: '15px', color: '#1c1c1e', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ fontWeight: 800, fontSize: '15px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
               📅 Today's Agenda
             </span>
             <button 
@@ -178,19 +178,19 @@ const HomeDashboard: React.FC = () => {
               const proj = projects.find(p => p.id === ev.projectId);
               return (
                 <div key={ev.id} style={{ display: 'flex', gap: '12px', padding: '10px 12px', borderRadius: '12px', backgroundColor: 'rgba(255,255,255,0.4)', borderLeft: `4px solid ${proj?.color || '#0a7aff'}` }}>
-                  <div style={{ fontSize: '12px', fontWeight: 800, color: '#1c1c1e', minWidth: '42px' }}>
+                  <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text-primary)', minWidth: '42px' }}>
                     {ev.startTime}
                   </div>
                   <div>
-                    <div style={{ fontSize: '13px', fontWeight: 700, color: '#1c1c1e' }}>{ev.title}</div>
-                    <div style={{ fontSize: '11px', color: '#8e8e93', marginTop: '2px' }}>{ev.description || 'No description'}</div>
+                    <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>{ev.title}</div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>{ev.description || 'No description'}</div>
                   </div>
                 </div>
               );
             })}
             
             {todayEvents.length === 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, padding: '20px', color: '#8e8e93', fontStyle: 'italic', fontSize: '13px', gap: '8px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, padding: '20px', color: 'var(--text-secondary)', fontStyle: 'italic', fontSize: '13px', gap: '8px' }}>
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/></svg>
                 No events scheduled for today
               </div>
@@ -200,7 +200,7 @@ const HomeDashboard: React.FC = () => {
 
         {/* Quick Tools & Reminders */}
         <div className="glass-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <div style={{ fontWeight: 800, fontSize: '15px', color: '#1c1c1e' }}>💡 Task Summary</div>
+          <div style={{ fontWeight: 800, fontSize: '15px', color: 'var(--text-primary)' }}>💡 Task Summary</div>
           
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: 700, padding: '8px', borderRadius: '10px', backgroundColor: 'rgba(0,0,0,0.02)' }}>
@@ -242,7 +242,7 @@ const HomeDashboard: React.FC = () => {
       {/* Projects Section Grid */}
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-          <h2 style={{ fontSize: '20px', fontWeight: 800, color: '#1c1c1e' }}>📂 Active Projects</h2>
+          <h2 style={{ fontSize: '20px', fontWeight: 800, color: 'var(--text-primary)' }}>📂 Active Projects</h2>
           <button 
             onClick={() => setActiveView('projects')}
             style={{ background: 'transparent', border: 'none', color: '#0a7aff', fontWeight: 800, fontSize: '13px', cursor: 'pointer' }}
@@ -271,20 +271,20 @@ const HomeDashboard: React.FC = () => {
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: proj.color }} />
-                  <span style={{ fontSize: '11px', color: '#8e8e93', fontWeight: 700 }}>
+                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 700 }}>
                     {projectNotes.length} notes
                   </span>
                 </div>
 
                 <div>
-                  <h3 style={{ fontSize: '16px', fontWeight: 800, color: '#1c1c1e', marginBottom: '4px' }}>{proj.name}</h3>
-                  <p style={{ fontSize: '12px', color: '#48484a', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', minHeight: '36px', lineHeight: 1.4 }}>
+                  <h3 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '4px' }}>{proj.name}</h3>
+                  <p style={{ fontSize: '12px', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', minHeight: '36px', lineHeight: 1.4 }}>
                     {proj.description || 'No description provided.'}
                   </p>
                 </div>
 
                 <div style={{ marginTop: 'auto' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', fontWeight: 700, color: '#48484a', marginBottom: '6px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '6px' }}>
                     <span>Kanban Progress</span>
                     <span>{progress}%</span>
                   </div>
@@ -313,15 +313,15 @@ const HomeDashboard: React.FC = () => {
             onClick={() => setShowAddProjModal(true)}
             className="glass-card btn-animate"
           >
-            <div style={{ width: '40px', height: '40px', borderRadius: '50%', border: '2px solid rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', color: '#8e8e93', fontWeight: 600 }}>+</div>
-            <span style={{ fontSize: '13px', fontWeight: 800, color: '#48484a' }}>Add New Project</span>
+            <div style={{ width: '40px', height: '40px', borderRadius: '50%', border: '2px solid rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', color: 'var(--text-secondary)', fontWeight: 600 }}>+</div>
+            <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text-muted)' }}>Add New Project</span>
           </div>
         </div>
       </div>
 
       {/* Recent Notebooks Row */}
       <div>
-        <h2 style={{ fontSize: '20px', fontWeight: 800, color: '#1c1c1e', marginBottom: '14px' }}>📝 Recent Notebooks</h2>
+        <h2 style={{ fontSize: '20px', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '14px' }}>📝 Recent Notebooks</h2>
         
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '16px' }}>
           {files.slice(-4).reverse().map(file => {
@@ -349,10 +349,10 @@ const HomeDashboard: React.FC = () => {
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z"/></svg>
                 </div>
                 <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ fontSize: '13px', fontWeight: 800, color: '#1c1c1e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {file.name}
                   </div>
-                  <div style={{ fontSize: '11px', color: '#8e8e93', marginTop: '2px', fontWeight: 600 }}>
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px', fontWeight: 600 }}>
                     {file.type.toUpperCase()} • {proj ? proj.name : 'Inbox'}
                   </div>
                 </div>
@@ -361,7 +361,7 @@ const HomeDashboard: React.FC = () => {
           })}
 
           {files.length === 0 && (
-            <div style={{ gridColumn: '1/-1', color: '#8e8e93', fontStyle: 'italic', fontSize: '13px', padding: '10px' }}>
+            <div style={{ gridColumn: '1/-1', color: 'var(--text-secondary)', fontStyle: 'italic', fontSize: '13px', padding: '10px' }}>
               No notes logged. Head over to the Canvas or drag in files to start!
             </div>
           )}
@@ -393,36 +393,36 @@ const HomeDashboard: React.FC = () => {
               display: 'flex',
               flexDirection: 'column',
               gap: '16px',
-              background: '#ffffff',
+              background: 'var(--btn-secondary-bg)',
               boxShadow: '0 24px 64px rgba(0,0,0,0.15)'
             }}
           >
-            <h3 style={{ fontSize: '20px', fontWeight: 900, color: '#1c1c1e', letterSpacing: '-0.5px' }}>Create New Project</h3>
+            <h3 style={{ fontSize: '20px', fontWeight: 900, color: 'var(--text-primary)', letterSpacing: '-0.5px' }}>Create New Project</h3>
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <label style={{ fontSize: '12px', fontWeight: 800, color: '#48484a' }}>PROJECT NAME</label>
+              <label style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text-muted)' }}>PROJECT NAME</label>
               <input 
                 value={newProjName}
                 onChange={e => setNewProjName(e.target.value)}
                 placeholder="e.g. Molecular Research"
-                style={{ padding: '12px', borderRadius: '10px', border: '1px solid rgba(0,0,0,0.1)', fontSize: '14px', width: '100%' }}
+                style={{ padding: '12px', borderRadius: '10px', border: '1px solid var(--border-color)', fontSize: '14px', width: '100%' }}
                 required
               />
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <label style={{ fontSize: '12px', fontWeight: 800, color: '#48484a' }}>DESCRIPTION</label>
+              <label style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text-muted)' }}>DESCRIPTION</label>
               <textarea 
                 value={newProjDesc}
                 onChange={e => setNewProjDesc(e.target.value)}
                 placeholder="Optional description detailing aims..."
                 rows={3}
-                style={{ padding: '12px', borderRadius: '10px', border: '1px solid rgba(0,0,0,0.1)', fontSize: '14px', fontFamily: 'inherit', width: '100%', resize: 'none' }}
+                style={{ padding: '12px', borderRadius: '10px', border: '1px solid var(--border-color)', fontSize: '14px', fontFamily: 'inherit', width: '100%', resize: 'none' }}
               />
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <label style={{ fontSize: '12px', fontWeight: 800, color: '#48484a' }}>TAG COLOR</label>
+              <label style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text-muted)' }}>TAG COLOR</label>
               <div style={{ display: 'flex', gap: '8px' }}>
                 {colorsOption.map(color => (
                   <button
@@ -447,7 +447,7 @@ const HomeDashboard: React.FC = () => {
               <button 
                 type="button"
                 onClick={() => setShowAddProjModal(false)}
-                style={{ flex: 1, backgroundColor: '#f0f0f5', border: 'none', padding: '12px', borderRadius: '10px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', color: '#48484a' }}
+                style={{ flex: 1, backgroundColor: '#f0f0f5', border: 'none', padding: '12px', borderRadius: '10px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', color: 'var(--text-muted)' }}
               >
                 Cancel
               </button>
