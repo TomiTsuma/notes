@@ -22,10 +22,53 @@ function getSvgPathFromStroke(stroke: number[][]) {
 
 type Box = { x: number, y: number, w: number, h: number };
 
+function interpolateStrokePoints(stroke: Stroke): Point[] {
+  if (stroke.points.length === 2 && (stroke.tool === 'highlighter' || stroke.tool === 'ruler')) {
+    const [start, end] = stroke.points;
+    const renderPoints: Point[] = [];
+    const steps = 30;
+    for (let j = 0; j <= steps; j++) {
+      renderPoints.push([
+        start[0] + (end[0] - start[0]) * (j / steps),
+        start[1] + (end[1] - start[1]) * (j / steps),
+        start[2],
+      ]);
+    }
+    return renderPoints;
+  }
+  return stroke.points;
+}
+
+function distancePointToSegment(px: number, py: number, x1: number, y1: number, x2: number, y2: number): number {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return Math.hypot(px - x1, py - y1);
+  let t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+}
+
+function strokeHitTest(stroke: Stroke, x: number, y: number, brushSize: number): boolean {
+  const points = interpolateStrokePoints(stroke);
+  const radius = Math.max(24, stroke.size * 1.5, brushSize * 2);
+  for (let i = 0; i < points.length - 1; i++) {
+    const [x1, y1] = points[i];
+    const [x2, y2] = points[i + 1];
+    if (distancePointToSegment(x, y, x1, y1, x2, y2) <= radius) return true;
+  }
+  if (points.length === 1) {
+    const [px, py] = points[0];
+    return Math.hypot(px - x, py - y) <= radius;
+  }
+  return false;
+}
+
 const DrawingCanvas: React.FC = () => {
-  const { activeTool, brushColor, brushSize, activeDocumentId, annotations, setStrokes, translateStrokes, addTextElement, setFocusedTextId } = useAppStore();
+  const { activeTool, brushColor, brushSize, activeDocumentId, annotations, setStrokes, translateStrokes, addTextElement, setFocusedTextId, deleteTextElement } = useAppStore();
   
   const strokes = activeDocumentId && annotations[activeDocumentId] ? annotations[activeDocumentId].strokes : [];
+  const textElements = activeDocumentId && annotations[activeDocumentId] ? annotations[activeDocumentId].textElements : [];
   
   const [currentStroke, setCurrentStroke] = useState<Point[]>([]);
   const [snapMode, setSnapMode] = useState(false);
@@ -47,6 +90,20 @@ const DrawingCanvas: React.FC = () => {
     const scrollTop = scrollParent?.scrollTop ?? 0;
     return { x: clientX - rect.left, y: clientY - rect.top + scrollTop };
   };
+
+  const eraseAt = useCallback((x: number, y: number) => {
+    if (!activeDocumentId) return;
+    setStrokes(activeDocumentId, prev =>
+      prev.filter(stroke => !strokeHitTest(stroke, x, y, brushSize))
+    );
+    textElements.forEach(te => {
+      const w = Math.max(80, te.text.length * 8);
+      const h = te.type === 'sticky' ? 100 : 30;
+      if (x >= te.x && x <= te.x + w && y >= te.y && y <= te.y + h) {
+        deleteTextElement(activeDocumentId, te.id);
+      }
+    });
+  }, [activeDocumentId, brushSize, setStrokes, textElements, deleteTextElement]);
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     if ((e.target as Element).closest('.text-element')) return;
@@ -90,6 +147,11 @@ const DrawingCanvas: React.FC = () => {
     setLassoBox(null);
     setSelectedIndices([]);
 
+    if (activeTool === 'eraser') {
+      eraseAt(x, y);
+      return;
+    }
+
     setCurrentStroke([[x, y, pressure]]);
     setSnapMode(activeTool === 'ruler');
     
@@ -98,7 +160,7 @@ const DrawingCanvas: React.FC = () => {
         setSnapMode(true);
       }, 400); 
     }
-  }, [activeTool, lassoBox, activeDocumentId, addTextElement, setFocusedTextId]);
+  }, [activeTool, lassoBox, activeDocumentId, addTextElement, setFocusedTextId, eraseAt]);
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     if (e.buttons !== 1) return;
@@ -119,9 +181,7 @@ const DrawingCanvas: React.FC = () => {
     }
 
     if (activeTool === 'eraser') {
-      setStrokes(activeDocumentId, prev => prev.filter(stroke => {
-        return !stroke.points.some(p => Math.hypot(p[0] - x, p[1] - y) < 20);
-      }));
+      eraseAt(x, y);
     } else if (activeTool === 'pen' || activeTool === 'highlighter' || activeTool === 'ruler') {
       if (activeTool === 'highlighter' && !snapMode) {
         if (holdTimeoutRef.current) clearTimeout(holdTimeoutRef.current);
@@ -137,7 +197,7 @@ const DrawingCanvas: React.FC = () => {
         return [...prev, [x, y, pressure]];
       });
     }
-  }, [activeTool, snapMode, activeDocumentId, setStrokes, isDraggingLasso, lassoBox]);
+  }, [activeTool, snapMode, activeDocumentId, setStrokes, isDraggingLasso, lassoBox, eraseAt]);
 
   const handlePointerUp = useCallback(() => {
     if (holdTimeoutRef.current) clearTimeout(holdTimeoutRef.current);

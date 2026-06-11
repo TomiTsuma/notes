@@ -33,9 +33,9 @@ const ToolPalette: React.FC = () => {
     setExpanded(false);
   };
 
-  const radius = 112;
-  const startAngle = Math.PI * 1.08;
-  const endAngle = Math.PI * 1.62;
+  const radius = 136;
+  const startAngle = Math.PI * 0.92;
+  const endAngle = Math.PI * 1.78;
   const step = mainTools.length > 1 ? (endAngle - startAngle) / (mainTools.length - 1) : 0;
 
   const polarPosition = (angle: number) => ({
@@ -43,7 +43,7 @@ const ToolPalette: React.FC = () => {
     y: Math.sin(angle) * radius,
   });
 
-  const undoAngle = endAngle + 0.12;
+  const undoAngle = endAngle + 0.38;
   const undoPos = polarPosition(undoAngle);
 
   return (

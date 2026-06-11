@@ -5,6 +5,7 @@ import DocumentHeader from './components/Layout/DocumentHeader';
 import DocumentViewer from './components/Canvas/DocumentViewer';
 import RightPanel from './components/Layout/RightPanel';
 import { useAppStore } from './store/appStore';
+import { useStoreSync } from './hooks/useStoreSync';
 
 // Dynamic Workspace Views
 import HomeDashboard from './components/Dashboard/HomeDashboard';
@@ -16,6 +17,7 @@ import ThemeToggle from './components/UI/ThemeToggle';
 
 function App() {
   const { showRightPanel, activeView, currentBackground, theme, rotateBackground } = useAppStore();
+  const { loading, error } = useStoreSync();
   const [showSidebar, setShowSidebar] = useState(true);
 
   useEffect(() => {
@@ -63,6 +65,22 @@ function App() {
 
   return (
     <div className={`app-container ${showSidebar ? 'has-sidebar' : 'no-sidebar'} ${theme}`} style={{ position: 'relative', overflow: 'hidden' }}>
+      {loading && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: 'rgba(0,0,0,0.3)', backdropFilter: 'blur(4px)', fontFamily: 'Nunito', color: 'white', fontWeight: 700,
+        }}>
+          Loading workspace…
+        </div>
+      )}
+      {error && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9998, padding: '8px 16px',
+          background: '#ff3b30', color: 'white', fontFamily: 'Nunito', fontSize: 13, textAlign: 'center',
+        }}>
+          Sync error: {error}
+        </div>
+      )}
       {/* Background layer */}
       <div className="app-backdrop" style={{ backgroundImage: `url(${currentBackground})` }} />
       <div className="app-backdrop-blur" />

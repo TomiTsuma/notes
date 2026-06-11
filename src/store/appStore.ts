@@ -1,22 +1,7 @@
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
-import { get, set as idbSet, del } from 'idb-keyval';
 
 const defaultPaperUrl = new URL('../../2512.02667v1_Graph_VQ-Transformer__GVT___Fast_and_Accurate_Molecular_Gene.pdf', import.meta.url).href;
 const defaultPaperId = 'clio-default-paper';
-
-// IndexedDB storage binding securely handling enormous PDF data payloads natively.
-const idbStorage = {
-  getItem: async (name: string): Promise<string | null> => {
-    return (await get(name)) || null;
-  },
-  setItem: async (name: string, value: string): Promise<void> => {
-    await idbSet(name, value);
-  },
-  removeItem: async (name: string): Promise<void> => {
-    await del(name);
-  },
-};
 
 const calculateNextStreak = (currentStreak: number, lastActiveDate: string, today: string): number => {
   if (lastActiveDate === today) return currentStreak;
@@ -82,6 +67,7 @@ export interface NoteFile {
   projectId?: string | null;
   remotePath?: string;
   tags?: string[];
+  serverStored?: boolean;
 }
 
 export interface SmartNoteSection {
@@ -94,6 +80,8 @@ interface DocumentAnnotations {
   textElements: TextElement[];
   smartNotes?: Record<string, SmartNoteSection>;
 }
+
+export type { DocumentAnnotations };
 
 export interface Project {
   id: string;
@@ -143,7 +131,7 @@ export interface UserStreak {
   totalNotesCreated: number;
 }
 
-interface AppState {
+export interface AppState {
   activeTool: ToolType;
   brushColor: string;
   brushSize: number;
@@ -236,9 +224,46 @@ interface AppState {
   associateFileToProject: (fileId: string, projectId: string | null) => void;
 }
 
-export const useAppStore = create<AppState>()(
-  persist(
-    (set) => ({
+export function getPersistedSnapshot(state: AppState): Record<string, unknown> {
+  return {
+    activeTool: state.activeTool,
+    brushColor: state.brushColor,
+    brushSize: state.brushSize,
+    folders: state.folders,
+    files: state.files.map((f) => {
+      const file = { ...f };
+      if (file.serverStored && file.dataUrl?.startsWith('/api/files/')) {
+        const { dataUrl: _, ...rest } = file;
+        return rest;
+      }
+      return file;
+    }),
+    activeDocumentId: state.activeDocumentId,
+    annotations: state.annotations,
+    papers: state.papers,
+    tags: state.tags,
+    tagSearchQuery: state.tagSearchQuery,
+    nextcloudUrl: state.nextcloudUrl,
+    nextcloudUsername: state.nextcloudUsername,
+    nextcloudPapersPath: state.nextcloudPapersPath,
+    nextcloudSyncPath: state.nextcloudSyncPath,
+    isRecording: state.isRecording,
+    showRightPanel: state.showRightPanel,
+    activeView: state.activeView,
+    selectedProjectId: state.selectedProjectId,
+    currentBackground: state.currentBackground,
+    theme: state.theme,
+    calendarViewMode: state.calendarViewMode,
+    selectedCalendarDate: state.selectedCalendarDate,
+    projects: state.projects,
+    kanbanTasks: state.kanbanTasks,
+    calendarEvents: state.calendarEvents,
+    chatHistory: state.chatHistory,
+    userStreak: state.userStreak,
+  };
+}
+
+export const useAppStore = create<AppState>()((set) => ({
       activeTool: 'pen',
       brushColor: '#1c1c1e',
       brushSize: 4,
@@ -518,43 +543,5 @@ export const useAppStore = create<AppState>()(
       associateFileToProject: (fileId, projectId) => set(state => ({
         files: state.files.map(f => f.id === fileId ? { ...f, projectId } : f)
       }))
-    }),
-    {
-      name: 'clio-storage',
-      storage: createJSONStorage(() => idbStorage),
-      partialize: (state) => ({
-        activeTool: state.activeTool,
-        brushColor: state.brushColor,
-        brushSize: state.brushSize,
-        folders: state.folders,
-        files: state.files,
-        activeDocumentId: state.activeDocumentId,
-        annotations: state.annotations,
-        papers: state.papers,
-        tags: state.tags,
-        tagSearchQuery: state.tagSearchQuery,
-        nextcloudUrl: state.nextcloudUrl,
-        nextcloudUsername: state.nextcloudUsername,
-        nextcloudConnected: false,
-        nextcloudStatus: 'idle' as const,
-        nextcloudError: null,
-        nextcloudPapersPath: state.nextcloudPapersPath,
-        nextcloudSyncPath: state.nextcloudSyncPath,
-        isRecording: state.isRecording,
-        showRightPanel: state.showRightPanel,
-        activeView: state.activeView,
-        selectedProjectId: state.selectedProjectId,
-        currentBackground: state.currentBackground,
-        theme: state.theme,
-        calendarViewMode: state.calendarViewMode,
-        selectedCalendarDate: state.selectedCalendarDate,
-        projects: state.projects,
-        kanbanTasks: state.kanbanTasks,
-        calendarEvents: state.calendarEvents,
-        chatHistory: state.chatHistory,
-        userStreak: state.userStreak,
-      }),
-    }
-  )
-);
+}));
 

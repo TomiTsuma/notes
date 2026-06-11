@@ -1,5 +1,6 @@
 import React from 'react';
 import { useAppStore } from '../../store/appStore';
+import CanvasTagBar from '../Canvas/CanvasTagBar';
 
 interface DocumentHeaderProps {
   showSidebar: boolean;
@@ -62,18 +63,19 @@ const DocumentHeader: React.FC<DocumentHeaderProps> = ({
         color: 'var(--text-primary)',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: 0 }}>
         <button 
           onClick={onToggleSidebar} 
-          style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '8px', display: 'flex', alignItems: 'center', color: 'var(--text-primary)' }} 
+          style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '8px', display: 'flex', alignItems: 'center', color: 'var(--text-primary)', flexShrink: 0 }} 
           title={showSidebar ? 'Hide sidebar' : 'Show sidebar'}
           className="btn-animate"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={iconStroke} strokeWidth="2.5"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
         </button>
-        <span style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.2px' }}>
+        <span style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.2px', flexShrink: 0 }}>
           {getHeaderTitle()}
         </span>
+        {activeView === 'canvas' && <CanvasTagBar />}
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>

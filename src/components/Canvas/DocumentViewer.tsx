@@ -31,7 +31,9 @@ const DocumentViewer: React.FC = () => {
   const file = files.find(f => f.id === activeDocumentId);
 
   useEffect(() => {
-    if (!file?.dataUrl || file.dataUrl.startsWith('data:application/pdf;base64,')) return;
+    if (!file?.dataUrl) return;
+    if (file.dataUrl.startsWith('/api/files/')) return;
+    if (file.dataUrl.startsWith('data:application/pdf;base64,')) return;
     if (!file.type?.includes('pdf')) return;
 
     const convert = async () => {
@@ -55,6 +57,21 @@ const DocumentViewer: React.FC = () => {
     return () => ro.disconnect();
   }, [numPages]);
 
+  const [txtContent, setTxtContent] = useState<string>('');
+
+  useEffect(() => {
+    if (file?.type !== 'txt') return;
+    const url = file.dataUrl;
+    if (!url) { setTxtContent(''); return; }
+    if (url.startsWith('data:')) {
+      setTxtContent(atob(url.split(',')[1] || ''));
+      return;
+    }
+    if (url.startsWith('/api/files/')) {
+      fetch(url).then(r => r.text()).then(setTxtContent).catch(() => setTxtContent(''));
+    }
+  }, [file?.id, file?.type, file?.dataUrl]);
+
   const pdfData = useMemo(() => {
     if (!file?.dataUrl) return null;
     setLoadError(null);
@@ -67,6 +84,7 @@ const DocumentViewer: React.FC = () => {
         for (let i = 0; i < raw.length; i++) uint8Array[i] = raw.charCodeAt(i);
         return { data: uint8Array };
       }
+      // Server URL or bundled asset URL — react-pdf fetches directly
       return file.dataUrl;
     } catch (e) {
       console.error('Error decoding PDF:', e);
@@ -148,7 +166,7 @@ const DocumentViewer: React.FC = () => {
         <div style={{ position: 'relative', backgroundColor: 'white', width: '100%', maxWidth: '800px', minHeight: '1130px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', padding: '40px' }}>
           {file.type === 'txt' && (
             <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'Nunito', fontSize: '15px' }}>
-              {file.dataUrl ? atob(file.dataUrl.split(',')[1] || '') : ''}
+              {txtContent}
             </pre>
           )}
           {file.type !== 'txt' && file.type !== 'pdf' && (

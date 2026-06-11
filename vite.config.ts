@@ -9,6 +9,18 @@ export default defineConfig({
     port: 4191,
     cors: true,
     proxy: {
+      '/api/bootstrap': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      },
+      '/api/health': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      },
+      '/api/files': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      },
       '/api/ollama': {
         target: 'http://localhost:11434',
         changeOrigin: true,

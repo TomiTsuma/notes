@@ -10,3 +10,10 @@ services:
     restart: unless-stopped
     environment:
       - NODE_ENV=production
+      - CLIO_DATA_DIR=/data
+      - PORT=4191
+    volumes:
+      - clio-data:/data
+
+volumes:
+  clio-data:
