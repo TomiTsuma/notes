@@ -68,18 +68,18 @@ const HomeDashboard: React.FC = () => {
         <button 
           onClick={() => setShowAddProjModal(true)}
           style={{
-            background: 'linear-gradient(135deg, #0a7aff, #0062d6)',
+            background: '#0a7aff',
             color: 'white',
             border: 'none',
-            borderRadius: '14px',
+            borderRadius: '10px',
             padding: '12px 20px',
             fontSize: '14px',
-            fontWeight: 800,
+            fontWeight: 700,
             display: 'flex',
             alignItems: 'center',
             gap: '8px',
             cursor: 'pointer',
-            boxShadow: '0 4px 16px rgba(10, 122, 255, 0.25)'
+            boxShadow: '0 1px 3px rgba(10, 122, 255, 0.2)'
           }}
           className="btn-animate"
         >
@@ -106,9 +106,7 @@ const HomeDashboard: React.FC = () => {
             <div style={{ 
               fontSize: '44px', 
               fontWeight: 900, 
-              background: 'linear-gradient(135deg, #ff9500, #ff2d55)', 
-              WebkitBackgroundClip: 'text', 
-              WebkitTextFillColor: 'transparent',
+              color: '#ff9500',
               letterSpacing: '-2px'
             }}>
               {userStreak.streakCount} Days
@@ -453,7 +451,7 @@ const HomeDashboard: React.FC = () => {
               </button>
               <button 
                 type="submit"
-                style={{ flex: 2, background: 'linear-gradient(135deg, #0a7aff, #0062d6)', color: 'white', border: 'none', padding: '12px', borderRadius: '10px', fontSize: '13px', fontWeight: 800, cursor: 'pointer' }}
+                style={{ flex: 2, background: '#0a7aff', color: 'white', border: 'none', padding: '12px', borderRadius: '10px', fontSize: '13px', fontWeight: 700, cursor: 'pointer' }}
               >
                 Create Hub
               </button>

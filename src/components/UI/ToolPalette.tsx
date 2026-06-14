@@ -33,9 +33,11 @@ const ToolPalette: React.FC = () => {
     setExpanded(false);
   };
 
-  const radius = 136;
-  const startAngle = Math.PI * 0.92;
-  const endAngle = Math.PI * 1.78;
+  // Semicircle above the FAB (bottom-center layout)
+  // Arc from ~195° to ~345° in radians, creating an upward fan
+  const radius = 120;
+  const startAngle = Math.PI + 0.26;   // ~195° — slightly below left horizontal
+  const endAngle = 2 * Math.PI - 0.26; // ~345° — slightly below right horizontal
   const step = mainTools.length > 1 ? (endAngle - startAngle) / (mainTools.length - 1) : 0;
 
   const polarPosition = (angle: number) => ({
@@ -43,7 +45,8 @@ const ToolPalette: React.FC = () => {
     y: Math.sin(angle) * radius,
   });
 
-  const undoAngle = endAngle + 0.38;
+  // Undo sits just past the last tool, slightly to the right
+  const undoAngle = endAngle + 0.32;
   const undoPos = polarPosition(undoAngle);
 
   return (
@@ -61,7 +64,7 @@ const ToolPalette: React.FC = () => {
               style={{
                 ['--tx' as string]: `${x}px`,
                 ['--ty' as string]: `${y}px`,
-                transitionDelay: expanded ? `${i * 35}ms` : '0ms',
+                transitionDelay: expanded ? `${i * 30}ms` : '0ms',
                 zIndex: 10 + i,
               }}
               onClick={() => handleToolClick(tool.id)}
@@ -76,6 +79,7 @@ const ToolPalette: React.FC = () => {
           style={{
             ['--tx' as string]: `${undoPos.x}px`,
             ['--ty' as string]: `${undoPos.y}px`,
+            transitionDelay: expanded ? `${mainTools.length * 30}ms` : '0ms',
             zIndex: 20,
           }}
           onClick={() => handleToolClick('undo')}
@@ -87,17 +91,23 @@ const ToolPalette: React.FC = () => {
 
       {showSettings && (activeTool === 'pen' || activeTool === 'highlighter') && (
         <div className="radial-settings-panel">
-          <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-secondary)', marginBottom: 8 }}>COLOR</div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+          <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-secondary)', marginBottom: 8, letterSpacing: '0.05em' }}>COLOR</div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
             {colors.map(c => (
-              <button key={c} onClick={() => setBrushColor(c)}
-                style={{ width: 22, height: 22, borderRadius: '50%', background: c, border: brushColor === c ? '2px solid #0a7aff' : '1px solid rgba(0,0,0,0.1)', cursor: 'pointer' }} />
+              <button key={c} className="radial-color-swatch" onClick={() => { setBrushColor(c); setShowSettings(false); }}
+                style={{
+                  width: 24, height: 24, borderRadius: '50%', background: c, cursor: 'pointer',
+                  border: brushColor === c ? '2.5px solid var(--accent-color)' : '1px solid rgba(0,0,0,0.08)',
+                  boxShadow: brushColor === c ? '0 0 0 2px rgba(10,122,255,0.2)' : 'none',
+                }} />
             ))}
           </div>
-          {activeTool === 'pen' && (
+          {(activeTool === 'pen' || activeTool === 'highlighter') && (
             <>
-              <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-secondary)', marginBottom: 4 }}>SIZE: {brushSize}</div>
-              <input type="range" min={1} max={12} value={brushSize} onChange={e => setBrushSize(Number(e.target.value))} style={{ width: '100%' }} />
+              <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-secondary)', marginBottom: 6, letterSpacing: '0.05em' }}>
+                SIZE <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{activeTool === 'highlighter' ? brushSize * 3 : brushSize}px</span>
+              </div>
+              <input type="range" min={2} max={16} value={brushSize} onChange={e => setBrushSize(Number(e.target.value))} />
             </>
           )}
         </div>

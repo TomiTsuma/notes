@@ -112,6 +112,18 @@
   min-width: 0;
 }
 
+/* Subtle page-grid texture for the canvas area */
+.canvas-container::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle, var(--border-subtle) 1px, transparent 1px);
+  background-size: 24px 24px;
+  opacity: 0.5;
+  pointer-events: none;
+  z-index: 0;
+}
+
 .top-toolbar {
   flex-shrink: 0;
   border-bottom: 1px solid var(--border-color);
@@ -144,12 +156,12 @@
   left: 16px;
   top: 80px;
   z-index: 130;
-  border-radius: 16px;
+  border-radius: 10px;
   padding: 10px 14px;
   background: var(--bg-surface-solid);
   color: var(--text-primary);
   border: 1px solid var(--border-color);
-  box-shadow: 0 4px 16px var(--shadow-md);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
   cursor: pointer;
 }
 

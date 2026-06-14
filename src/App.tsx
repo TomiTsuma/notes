@@ -19,6 +19,7 @@ function App() {
   const { showRightPanel, activeView, currentBackground, theme, rotateBackground } = useAppStore();
   const { loading, error } = useStoreSync();
   const [showSidebar, setShowSidebar] = useState(true);
+  const [bgFading, setBgFading] = useState(false);
 
   useEffect(() => {
     const updateLayout = () => {
@@ -36,9 +37,16 @@ function App() {
     document.documentElement.style.colorScheme = theme;
   }, [theme]);
 
+  // Rotate wallpaper every 10s on dashboard with a proper fade transition
   useEffect(() => {
     if (activeView !== 'home') return;
-    const interval = setInterval(() => rotateBackground(), 8000);
+    const interval = setInterval(() => {
+      setBgFading(true); // fade out
+      setTimeout(() => {
+        rotateBackground(); // swap image while invisible
+        setTimeout(() => setBgFading(false), 60); // fade back in
+      }, 600); // matches the CSS opacity transition duration
+    }, 10000);
     return () => clearInterval(interval);
   }, [activeView, rotateBackground]);
 
@@ -82,7 +90,7 @@ function App() {
         </div>
       )}
       {/* Background layer */}
-      <div className="app-backdrop" style={{ backgroundImage: `url(${currentBackground})` }} />
+      <div className={`app-backdrop ${bgFading ? 'fading' : ''}`} style={{ backgroundImage: `url(${currentBackground})` }} />
       <div className="app-backdrop-blur" />
 
       {showSidebar && <Sidebar />}

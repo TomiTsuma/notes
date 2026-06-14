@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useAppStore } from '../../store/appStore';
 import type { TextElement } from '../../store/appStore';
 import ReferenceModal from '../Modals/ReferenceModal';
@@ -17,12 +17,26 @@ const TextLayer: React.FC = () => {
   const textareaRefs = useRef<{ [key: string]: HTMLTextAreaElement | null }>({});
   const [draggingEl, setDraggingEl] = useState<string | null>(null);
   const dragStartPos = useRef({ x: 0, y: 0 });
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (focusedTextId && textareaRefs.current[focusedTextId]) {
       textareaRefs.current[focusedTextId]?.focus();
     }
   }, [focusedTextId]);
+
+  // Convert viewport coordinates to overlay-relative coordinates
+  const getOverlayCoords = useCallback((clientX: number, clientY: number) => {
+    const el = containerRef.current;
+    if (!el) return { x: clientX, y: clientY };
+    const rect = el.getBoundingClientRect();
+    const scrollParent = el.closest('[data-scroll-container]') as HTMLElement | null;
+    const scrollTop = scrollParent?.scrollTop ?? 0;
+    return {
+      x: clientX - rect.left,
+      y: clientY - rect.top + scrollTop,
+    };
+  }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>, el: TextElement) => {
     if (!activeDocumentId) return;
@@ -49,20 +63,22 @@ const TextLayer: React.FC = () => {
   const handleGripPointerDown = (e: React.PointerEvent, el: TextElement) => {
     e.stopPropagation();
     setDraggingEl(el.id);
-    dragStartPos.current = { x: e.clientX - el.x, y: e.clientY - el.y };
+    const coords = getOverlayCoords(e.clientX, e.clientY);
+    dragStartPos.current = { x: coords.x - el.x, y: coords.y - el.y };
     (e.target as Element).setPointerCapture(e.pointerId);
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
     if (draggingEl && activeDocumentId) {
-      updateTextElementPosition(activeDocumentId, draggingEl, e.clientX - dragStartPos.current.x, e.clientY - dragStartPos.current.y);
+      const coords = getOverlayCoords(e.clientX, e.clientY);
+      updateTextElementPosition(activeDocumentId, draggingEl, coords.x - dragStartPos.current.x, coords.y - dragStartPos.current.y);
     }
   };
 
   const handlePointerUp = () => setDraggingEl(null);
 
   return (
-    <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none' }}>
+    <div ref={containerRef} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none' }}>
       {textElements.map(el => (
         <div 
           key={el.id}
@@ -77,14 +93,15 @@ const TextLayer: React.FC = () => {
             top: el.y,
             pointerEvents: 'auto',
             padding: el.type === 'sticky' ? '28px 12px 12px 12px' : '4px',
-            backgroundColor: el.type === 'sticky' ? '#fff6a3' : 'transparent',
-            boxShadow: el.type === 'sticky' ? '0 8px 24px rgba(0,0,0,0.15)' : 'none',
+            backgroundColor: el.type === 'sticky' ? '#fff8b5' : 'transparent',
+            boxShadow: el.type === 'sticky' ? '0 1px 4px rgba(0,0,0,0.08), 0 4px 12px rgba(0,0,0,0.06)' : 'none',
             minWidth: '200px',
             minHeight: '100px',
-            borderRadius: '4px',
-            border: el.type === 'text' ? '1px dashed #ccc' : 'none',
+            borderRadius: '6px',
+            border: el.type === 'text' ? '1px dashed rgba(0,0,0,0.15)' : 'none',
             cursor: draggingEl === el.id ? 'grabbing' : 'default',
-            outline: focusedTextId === el.id ? '2px solid rgba(10,122,255,0.4)' : 'none',
+            outline: focusedTextId === el.id ? '2px solid rgba(10,122,255,0.3)' : 'none',
+            transition: 'outline 0.15s ease',
           }}
         >
           {el.type === 'sticky' && (

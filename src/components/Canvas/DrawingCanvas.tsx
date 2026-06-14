@@ -72,8 +72,9 @@ const DrawingCanvas: React.FC = () => {
   
   const [currentStroke, setCurrentStroke] = useState<Point[]>([]);
   const [snapMode, setSnapMode] = useState(false);
+  const [canvasDims, setCanvasDims] = useState({ w: 800, h: 1200 });
   
-  // Lasso State
+  // Lasso state
   const [lassoBox, setLassoBox] = useState<Box | null>(null);
   const [selectedIndices, setSelectedIndices] = useState<number[]>([]);
   const [isDraggingLasso, setIsDraggingLasso] = useState(false);
@@ -82,6 +83,21 @@ const DrawingCanvas: React.FC = () => {
   
   const containerRef = useRef<HTMLDivElement>(null);
   const holdTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Track container dimensions for accurate SVG coordinate system
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => {
+      const rect = el.getBoundingClientRect();
+      const parentH = el.parentElement?.scrollHeight || el.offsetHeight;
+      setCanvasDims({ w: Math.max(rect.width, 800), h: Math.max(parentH, el.offsetHeight, 800) });
+    });
+    ro.observe(el);
+    // Also observe parent for height changes (PDF pages loading)
+    if (el.parentElement) ro.observe(el.parentElement);
+    return () => ro.disconnect();
+  }, [activeDocumentId]);
 
   const getCoords = (clientX: number, clientY: number) => {
     const rect = containerRef.current?.getBoundingClientRect();
@@ -240,7 +256,7 @@ const DrawingCanvas: React.FC = () => {
       setStrokes(activeDocumentId, prev => [...prev, {
         points: currentStroke,
         color: brushColor,
-        size: activeTool === 'highlighter' ? 24 : brushSize,
+        size: activeTool === 'highlighter' ? brushSize * 3 : brushSize,
         tool,
       }]);
       setCurrentStroke([]);
@@ -299,7 +315,7 @@ const DrawingCanvas: React.FC = () => {
   const activeStrokeData = currentStroke.length > 0 && activeTool !== 'select' ? {
     points: currentStroke,
     color: brushColor,
-    size: activeTool === 'highlighter' ? 24 : brushSize,
+    size: activeTool === 'highlighter' ? brushSize * 3 : brushSize,
     tool: activeTool
   } : null;
 
@@ -312,7 +328,12 @@ const DrawingCanvas: React.FC = () => {
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
     >
-      <svg style={{ width: '100%', height: '100%', pointerEvents: 'none' }}>
+      <svg
+        width={canvasDims.w}
+        height={canvasDims.h}
+        viewBox={`0 0 ${canvasDims.w} ${canvasDims.h}`}
+        style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }}
+      >
         <g className="highlighter-strokes">
           {highlighters.map(({ s, i }) => renderStroke(s, `hl-${i}`, selectedIndices.includes(i)))}
           {activeStrokeData && activeStrokeData.tool === 'highlighter' && renderStroke(activeStrokeData, 'hl-active')}

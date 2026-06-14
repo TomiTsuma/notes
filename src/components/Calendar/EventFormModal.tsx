@@ -90,7 +90,7 @@ const EventFormModal: React.FC<Props> = ({ date, projects, editEvent, onSubmit, 
           <button type="button" onClick={onClose}
             style={{ flex: 1, background: '#f0f0f5', border: 'none', padding: 10, borderRadius: 8, fontWeight: 700, cursor: 'pointer' }}>Cancel</button>
           <button type="submit"
-            style={{ flex: 2, background: 'linear-gradient(135deg, #0a7aff, #0062d6)', color: 'white', border: 'none', padding: 10, borderRadius: 8, fontWeight: 800, cursor: 'pointer' }}>
+            style={{ flex: 2, background: '#0a7aff', color: 'white', border: 'none', padding: 10, borderRadius: 8, fontWeight: 700, cursor: 'pointer' }}>
             {editEvent ? 'Save' : 'Schedule'}
           </button>
         </div>

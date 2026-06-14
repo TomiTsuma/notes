@@ -120,6 +120,7 @@ const DocumentViewer: React.FC = () => {
     left: 0,
     right: 0,
     height: overlayHeight || '100%',
+    minHeight: '100%',
     pointerEvents: 'auto',
   };
 
@@ -150,7 +151,7 @@ const DocumentViewer: React.FC = () => {
               loading={<div style={{ padding: '40px', fontFamily: 'Nunito' }}>Loading document...</div>}
             >
               {Array.from(new Array(numPages || 0), (_, index) => (
-                <div key={`page_${index + 1}`} style={{ marginBottom: '16px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', backgroundColor: 'white', pointerEvents: 'none' }}>
+                <div key={`page_${index + 1}`} style={{ marginBottom: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 2px 8px rgba(0,0,0,0.04)', backgroundColor: 'white', pointerEvents: 'none', borderRadius: '2px' }}>
                   <Page pageNumber={index + 1} renderTextLayer={false} renderAnnotationLayer={false} width={800} />
                 </div>
               ))}

@@ -534,8 +534,11 @@ export const useAppStore = create<AppState>()((set) => ({
         delete newHistory[id];
         return { chatHistory: newHistory };
       }),
-      rotateBackground: () => set(() => {
-        const nextIdx = Math.floor(Math.random() * 5) + 1;
+      rotateBackground: () => set((state) => {
+        const available = [1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+        const currentIdx = parseInt(state.currentBackground.match(/bkg(\d+)/)?.[1] || '1');
+        const options = available.filter(n => n !== currentIdx);
+        const nextIdx = options[Math.floor(Math.random() * options.length)];
         return { currentBackground: `/bkg${nextIdx}.jpeg` };
       }),
       toggleTheme: () => set(state => ({ theme: state.theme === 'light' ? 'dark' : 'light' })),
