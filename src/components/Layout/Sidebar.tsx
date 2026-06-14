@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import logo from '../../assets/logo.png';
 import { useAppStore } from '../../store/appStore';
@@ -46,6 +46,7 @@ const Sidebar: React.FC = () => {
     nextcloudPapersPath,
     nextcloudSyncPath,
     setNextcloudPaths,
+    associateFileToProject,
   } = useAppStore();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -62,7 +63,46 @@ const Sidebar: React.FC = () => {
   const [showTagsPanel, setShowTagsPanel] = useState(false);
   const [taggingFileId, setTaggingFileId] = useState<string | null>(null);
   const [folderPickerMode, setFolderPickerMode] = useState<'papers' | 'sync' | null>(null);
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; fileId: string; type: 'file' } | { x: number; y: number; folderId: string | null; type: 'folder' } | null>(null);
   const autoConnectAttempted = useRef(false);
+
+  // Close context menu on any click
+  useEffect(() => {
+    if (!ctxMenu) return;
+    const close = () => setCtxMenu(null);
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [ctxMenu]);
+
+  const showProjectPicker = useCallback((fileId: string) => {
+    setCtxMenu(null);
+    if (projects.length === 0) return alert('No projects yet. Create one in the Project Hub.');
+    const list = projects.map((p, i) => `${i + 1}. ${p.name}`).join('\n');
+    const choice = prompt(`Assign to project:\n${list}\n\nEnter number (or 0 to remove from project):`);
+    if (!choice) return;
+    const idx = parseInt(choice);
+    if (idx === 0) {
+      associateFileToProject(fileId, null);
+    } else if (idx >= 1 && idx <= projects.length) {
+      associateFileToProject(fileId, projects[idx - 1].id);
+    }
+  }, [projects, associateFileToProject]);
+
+  const showFolderProjectPicker = useCallback((folderId: string | null) => {
+    setCtxMenu(null);
+    const folderFiles = files.filter(f => f.folderId === folderId);
+    if (folderFiles.length === 0) return alert('No files in this folder.');
+    if (projects.length === 0) return alert('No projects yet. Create one in the Project Hub.');
+    const list = projects.map((p, i) => `${i + 1}. ${p.name}`).join('\n');
+    const choice = prompt(`Assign all ${folderFiles.length} files in this folder to project:\n${list}\n\nEnter number (or 0 to remove from project):`);
+    if (!choice) return;
+    const idx = parseInt(choice);
+    if (idx === 0) {
+      folderFiles.forEach(f => associateFileToProject(f.id, null));
+    } else if (idx >= 1 && idx <= projects.length) {
+      folderFiles.forEach(f => associateFileToProject(f.id, projects[idx - 1].id));
+    }
+  }, [files, projects, associateFileToProject]);
 
   const toggleExpand = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -262,11 +302,11 @@ const Sidebar: React.FC = () => {
     <div key={file.id} 
       onClick={() => setActiveDocument(file.id)}
       onContextMenu={(e) => { 
-        e.preventDefault(); 
-        if (confirm(`Are you sure you want to delete '${file.name}'?`)) deleteFile(file.id); 
-        else { const n = prompt('Rename file:', file.name); if(n) updateFile(file.id, { name: n }); } 
+        e.preventDefault();
+        e.stopPropagation();
+        setCtxMenu({ x: e.clientX, y: e.clientY, fileId: file.id, type: 'file' });
       }}
-      title="Right click to Rename/Delete"
+      title="Right-click for options"
       style={{ 
         padding: `8px 12px 8px ${12 + depth * 16}px`, 
         backgroundColor: activeDocumentId === file.id && activeView === 'canvas' ? 'rgba(10, 122, 255, 0.15)' : 'transparent', 
@@ -279,7 +319,7 @@ const Sidebar: React.FC = () => {
         color: activeDocumentId === file.id && activeView === 'canvas' ? 'var(--accent-color)' : 'var(--text-primary)',
         cursor: 'pointer', 
         marginBottom: '2px',
-        transition: 'all 0.2s ease'
+        transition: 'background 0.15s ease'
       }}
       className="btn-animate"
     >
@@ -314,12 +354,12 @@ const Sidebar: React.FC = () => {
           return (
             <div 
               onContextMenu={(e) => { 
-                e.preventDefault(); 
-                if (confirm(`Are you sure you want to delete folder '${folder.name}'?`)) deleteFolder(folder.id); 
-                else { const n = prompt('Rename folder:', folder.name); if(n) updateFolder(folder.id, n); } 
+                e.preventDefault();
+                e.stopPropagation();
+                setCtxMenu({ x: e.clientX, y: e.clientY, folderId: folderId, type: 'folder' });
               }}
               onClick={(e) => toggleExpand(folderId, e)}
-              title="Right click to Rename/Delete"
+              title="Right-click for options"
               style={{ padding: `8px 12px 8px ${12 + depth * 16}px`, borderRadius: '8px', marginBottom: '2px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer', fontWeight: 600, color: 'var(--text-sidebar)' }}
               className="btn-animate"
             >
@@ -765,6 +805,62 @@ const Sidebar: React.FC = () => {
           onClose={() => setFolderPickerMode(null)}
         />
       )}
+
+      {/* Context Menu */}
+      {ctxMenu && ctxMenu.type === 'file' && (() => {
+        const file = files.find(f => f.id === ctxMenu.fileId);
+        if (!file) return null;
+        const proj = file.projectId ? projects.find(p => p.id === file.projectId) : null;
+        return (
+          <div style={{
+            position: 'fixed', left: ctxMenu.x, top: ctxMenu.y, zIndex: 9999,
+            background: 'var(--bg-surface-solid)', border: '1px solid var(--border-color)',
+            borderRadius: 10, padding: '4px 0', minWidth: 180, boxShadow: '0 4px 20px var(--shadow-md)',
+            fontSize: 13, fontFamily: 'Nunito',
+          }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ padding: '6px 14px', fontWeight: 700, fontSize: 11, color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-subtle)', marginBottom: 2 }}>
+              {file.name.length > 22 ? file.name.slice(0, 22) + '…' : file.name}
+            </div>
+            <div style={{ padding: '6px 14px', cursor: 'pointer' }} onClick={() => { setCtxMenu(null); const n = prompt('Rename file:', file.name); if (n) updateFile(file.id, { name: n }); }}>Rename</div>
+            <div style={{ padding: '6px 14px', cursor: 'pointer' }} onClick={() => showProjectPicker(file.id)}>
+              {proj ? `Change Project (${proj.name})` : 'Assign to Project…'}
+            </div>
+            {proj && (
+              <div style={{ padding: '6px 14px', cursor: 'pointer', color: 'var(--text-secondary)' }} onClick={() => { setCtxMenu(null); associateFileToProject(file.id, null); }}>
+                Remove from {proj.name}
+              </div>
+            )}
+            <div style={{ borderTop: '1px solid var(--border-subtle)', marginTop: 2 }} />
+            <div style={{ padding: '6px 14px', cursor: 'pointer', color: 'var(--danger-color)' }} onClick={() => { setCtxMenu(null); if (confirm(`Delete '${file.name}'?`)) deleteFile(file.id); }}>Delete</div>
+          </div>
+        );
+      })()}
+
+      {ctxMenu && ctxMenu.type === 'folder' && (() => {
+        const folder = ctxMenu.folderId ? folders.find(f => f.id === ctxMenu.folderId) : null;
+        const folderName = folder?.name || 'Root';
+        const folderFileCount = files.filter(f => f.folderId === ctxMenu.folderId).length;
+        return (
+          <div style={{
+            position: 'fixed', left: ctxMenu.x, top: ctxMenu.y, zIndex: 9999,
+            background: 'var(--bg-surface-solid)', border: '1px solid var(--border-color)',
+            borderRadius: 10, padding: '4px 0', minWidth: 200, boxShadow: '0 4px 20px var(--shadow-md)',
+            fontSize: 13, fontFamily: 'Nunito',
+          }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ padding: '6px 14px', fontWeight: 700, fontSize: 11, color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-subtle)', marginBottom: 2 }}>
+              📁 {folderName}
+            </div>
+            <div style={{ padding: '6px 14px', cursor: 'pointer' }} onClick={() => { setCtxMenu(null); if (folder) { const n = prompt('Rename folder:', folder.name); if (n) updateFolder(folder.id, n); } }}>Rename</div>
+            {folderFileCount > 0 && (
+              <div style={{ padding: '6px 14px', cursor: 'pointer' }} onClick={() => showFolderProjectPicker(ctxMenu.folderId)}>
+                Assign {folderFileCount} file{folderFileCount !== 1 ? 's' : ''} to Project…
+              </div>
+            )}
+            <div style={{ borderTop: '1px solid var(--border-subtle)', marginTop: 2 }} />
+            <div style={{ padding: '6px 14px', cursor: 'pointer', color: 'var(--danger-color)' }} onClick={() => { setCtxMenu(null); if (folder && confirm(`Delete folder '${folder.name}'?`)) deleteFolder(folder.id); }}>Delete Folder</div>
+          </div>
+        );
+      })()}
     </div>
   );
 };
