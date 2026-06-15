@@ -5,13 +5,17 @@ import ReferenceModal from '../Modals/ReferenceModal';
 
 type RefModalState = { visible: boolean; x: number; y: number; textId: string | null }
 
-const TextLayer: React.FC = () => {
+const TextLayer: React.FC<{ documentId?: string }> = ({ documentId }) => {
   const {
     activeDocumentId, annotations, updateTextElement, deleteTextElement,
     updateTextElementPosition, focusedTextId, setFocusedTextId,
   } = useAppStore();
   
-  const textElements = activeDocumentId && annotations[activeDocumentId] ? annotations[activeDocumentId].textElements : [];
+  // Use documentId prop for rendering (each notebook page shows its own text elements),
+  // fall back to global activeDocumentId for non-notebook contexts
+  const effectiveDocId = documentId || activeDocumentId;
+  const isActive = effectiveDocId === activeDocumentId;
+  const textElements = effectiveDocId && annotations[effectiveDocId] ? annotations[effectiveDocId].textElements : [];
   
   const [refModal, setRefModal] = useState<RefModalState>({ visible: false, x: 0, y: 0, textId: null });
   const textareaRefs = useRef<{ [key: string]: HTMLTextAreaElement | null }>({});
@@ -30,18 +34,16 @@ const TextLayer: React.FC = () => {
     const el = containerRef.current;
     if (!el) return { x: clientX, y: clientY };
     const rect = el.getBoundingClientRect();
-    const scrollParent = el.closest('[data-scroll-container]') as HTMLElement | null;
-    const scrollTop = scrollParent?.scrollTop ?? 0;
     return {
       x: clientX - rect.left,
-      y: clientY - rect.top + scrollTop,
+      y: clientY - rect.top,
     };
   }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>, el: TextElement) => {
-    if (!activeDocumentId) return;
+    if (!effectiveDocId || !isActive) return;
     const val = e.target.value;
-    updateTextElement(activeDocumentId, el.id, val);
+    updateTextElement(effectiveDocId, el.id, val);
 
     if (val.match(/\\ref $/)) {
       const rect = e.target.getBoundingClientRect();
@@ -50,11 +52,11 @@ const TextLayer: React.FC = () => {
   };
 
   const handleRefSelect = (paperTitle: string) => {
-    if (refModal.textId && activeDocumentId) {
+    if (refModal.textId && effectiveDocId && isActive) {
       const el = textElements.find(t => t.id === refModal.textId);
       if (el) {
         const newText = el.text.replace(/\\ref $/, `[${paperTitle}] `);
-        updateTextElement(activeDocumentId, el.id, newText);
+        updateTextElement(effectiveDocId, el.id, newText);
       }
     }
     setRefModal({ visible: false, x: 0, y: 0, textId: null });
@@ -69,9 +71,9 @@ const TextLayer: React.FC = () => {
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
-    if (draggingEl && activeDocumentId) {
+    if (draggingEl && effectiveDocId && isActive) {
       const coords = getOverlayCoords(e.clientX, e.clientY);
-      updateTextElementPosition(activeDocumentId, draggingEl, coords.x - dragStartPos.current.x, coords.y - dragStartPos.current.y);
+      updateTextElementPosition(effectiveDocId, draggingEl, coords.x - dragStartPos.current.x, coords.y - dragStartPos.current.y);
     }
   };
 
@@ -118,7 +120,7 @@ const TextLayer: React.FC = () => {
           )}
 
           <button 
-            onClick={(e) => { e.stopPropagation(); if (activeDocumentId) deleteTextElement(activeDocumentId, el.id); }}
+            onClick={(e) => { e.stopPropagation(); if (effectiveDocId && isActive) deleteTextElement(effectiveDocId, el.id); }}
             style={{
               position: 'absolute', top: '-10px', right: '-10px', width: '24px', height: '24px',
               borderRadius: '50%', backgroundColor: '#ff3b30', border: 'none', color: 'white',

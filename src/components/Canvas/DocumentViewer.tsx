@@ -5,6 +5,7 @@ import 'react-pdf/dist/Page/TextLayer.css';
 import { useAppStore } from '../../store/appStore';
 import DrawingCanvas from './DrawingCanvas';
 import TextLayerOverlay from './TextLayer';
+import NotebookViewer from './NotebookViewer';
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.min.mjs',
@@ -104,6 +105,14 @@ const DocumentViewer: React.FC = () => {
         Select a note or upload a document to begin.
       </div>
     );
+  }
+
+  // Check if activeDocumentId is a notebook page
+  const isNotebookPage = files.some(
+    f => f.type === 'notebook' && (f.notebookPageIds || []).includes(activeDocumentId)
+  );
+  if (isNotebookPage) {
+    return <NotebookViewer />;
   }
 
   if (!file) {

@@ -64,11 +64,15 @@ function strokeHitTest(stroke: Stroke, x: number, y: number, brushSize: number):
   return false;
 }
 
-const DrawingCanvas: React.FC = () => {
+const DrawingCanvas: React.FC<{ documentId?: string }> = ({ documentId }) => {
   const { activeTool, brushColor, brushSize, activeDocumentId, annotations, setStrokes, translateStrokes, addTextElement, setFocusedTextId, deleteTextElement } = useAppStore();
   
-  const strokes = activeDocumentId && annotations[activeDocumentId] ? annotations[activeDocumentId].strokes : [];
-  const textElements = activeDocumentId && annotations[activeDocumentId] ? annotations[activeDocumentId].textElements : [];
+  // Use documentId prop for rendering (each notebook page shows its own strokes),
+  // fall back to global activeDocumentId for non-notebook contexts
+  const effectiveDocId = documentId || activeDocumentId;
+  const isActive = effectiveDocId === activeDocumentId;
+  const strokes = effectiveDocId && annotations[effectiveDocId] ? annotations[effectiveDocId].strokes : [];
+  const textElements = effectiveDocId && annotations[effectiveDocId] ? annotations[effectiveDocId].textElements : [];
   
   const [currentStroke, setCurrentStroke] = useState<Point[]>([]);
   const [snapMode, setSnapMode] = useState(false);
@@ -102,29 +106,28 @@ const DrawingCanvas: React.FC = () => {
   const getCoords = (clientX: number, clientY: number) => {
     const rect = containerRef.current?.getBoundingClientRect();
     if (!rect) return null;
-    const scrollParent = containerRef.current?.closest('[data-scroll-container]') as HTMLElement | null;
-    const scrollTop = scrollParent?.scrollTop ?? 0;
-    return { x: clientX - rect.left, y: clientY - rect.top + scrollTop };
+    return { x: clientX - rect.left, y: clientY - rect.top };
   };
 
   const eraseAt = useCallback((x: number, y: number) => {
-    if (!activeDocumentId) return;
-    setStrokes(activeDocumentId, prev =>
+    if (!effectiveDocId || !isActive) return;
+    setStrokes(effectiveDocId, prev =>
       prev.filter(stroke => !strokeHitTest(stroke, x, y, brushSize))
     );
     textElements.forEach(te => {
       const w = Math.max(80, te.text.length * 8);
       const h = te.type === 'sticky' ? 100 : 30;
       if (x >= te.x && x <= te.x + w && y >= te.y && y <= te.y + h) {
-        deleteTextElement(activeDocumentId, te.id);
+        deleteTextElement(effectiveDocId, te.id);
       }
     });
-  }, [activeDocumentId, brushSize, setStrokes, textElements, deleteTextElement]);
+  }, [effectiveDocId, isActive, brushSize, setStrokes, textElements, deleteTextElement]);
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     if ((e.target as Element).closest('.text-element')) return;
     (e.target as Element).setPointerCapture(e.pointerId);
-    if (!activeDocumentId) return;
+    // Only respond to pointer events on the active page
+    if (!effectiveDocId || !isActive) return;
     const coords = getCoords(e.clientX, e.clientY);
     if (!coords) return;
     const { x, y } = coords;
@@ -145,7 +148,7 @@ const DrawingCanvas: React.FC = () => {
 
     if (activeTool === 'text' || activeTool === 'sticky') {
       const newId = uuidv4();
-      addTextElement(activeDocumentId, {
+      addTextElement(effectiveDocId, {
         id: newId,
         x,
         y,
@@ -176,11 +179,11 @@ const DrawingCanvas: React.FC = () => {
         setSnapMode(true);
       }, 400); 
     }
-  }, [activeTool, lassoBox, activeDocumentId, addTextElement, setFocusedTextId, eraseAt]);
+  }, [activeTool, lassoBox, effectiveDocId, isActive, addTextElement, setFocusedTextId, eraseAt]);
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     if (e.buttons !== 1) return;
-    if (!activeDocumentId) return;
+    if (!effectiveDocId || !isActive) return;
 
     const coords = getCoords(e.clientX, e.clientY);
     if (!coords) return;
@@ -213,15 +216,15 @@ const DrawingCanvas: React.FC = () => {
         return [...prev, [x, y, pressure]];
       });
     }
-  }, [activeTool, snapMode, activeDocumentId, setStrokes, isDraggingLasso, lassoBox, eraseAt]);
+  }, [activeTool, snapMode, effectiveDocId, isActive, setStrokes, isDraggingLasso, lassoBox, eraseAt]);
 
   const handlePointerUp = useCallback(() => {
     if (holdTimeoutRef.current) clearTimeout(holdTimeoutRef.current);
-    if (!activeDocumentId) return;
+    if (!effectiveDocId || !isActive) return;
 
     if (activeTool === 'select') {
       if (isDraggingLasso && lassoBox) {
-        translateStrokes(activeDocumentId, selectedIndices, lassoOffset.x, lassoOffset.y);
+        translateStrokes(effectiveDocId, selectedIndices, lassoOffset.x, lassoOffset.y);
         setLassoBox({ 
           x: lassoBox.x + lassoOffset.x, 
           y: lassoBox.y + lassoOffset.y, 
@@ -253,7 +256,7 @@ const DrawingCanvas: React.FC = () => {
     
     if (currentStroke.length > 0) {
       const tool: Stroke['tool'] = activeTool === 'highlighter' ? 'highlighter' : activeTool === 'ruler' ? 'ruler' : 'pen';
-      setStrokes(activeDocumentId, prev => [...prev, {
+      setStrokes(effectiveDocId, prev => [...prev, {
         points: currentStroke,
         color: brushColor,
         size: activeTool === 'highlighter' ? brushSize * 3 : brushSize,
@@ -262,7 +265,7 @@ const DrawingCanvas: React.FC = () => {
       setCurrentStroke([]);
       setSnapMode(false);
     }
-  }, [currentStroke, brushColor, brushSize, activeTool, activeDocumentId, setStrokes, lassoBox, isDraggingLasso, lassoOffset, selectedIndices, strokes, translateStrokes]);
+  }, [currentStroke, brushColor, brushSize, activeTool, effectiveDocId, isActive, setStrokes, lassoBox, isDraggingLasso, lassoOffset, selectedIndices, strokes, translateStrokes]);
   
   useEffect(() => {
     return () => {

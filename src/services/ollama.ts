@@ -1,5 +1,5 @@
 export const OLLAMA_URL = import.meta.env.VITE_OLLAMA_URL || '/api/ollama';
-export const OLLAMA_MODEL = 'qwen3.5:35b-tuned';
+export const OLLAMA_MODEL = 'qwen3.5:researcher';
 
 export async function generateOllamaNoteStream(
   prompt: string,

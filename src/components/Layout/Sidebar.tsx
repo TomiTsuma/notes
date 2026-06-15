@@ -298,9 +298,28 @@ const Sidebar: React.FC = () => {
     if (folderInputRef.current) folderInputRef.current.value = '';
   };
 
-  const renderFile = (file: NoteFile, depth: number) => (
+  const isNotebookActive = (file: NoteFile) => {
+    if (file.type !== 'notebook') return activeDocumentId === file.id && activeView === 'canvas';
+    return activeView === 'canvas' && (file.notebookPageIds || []).includes(activeDocumentId || '');
+  };
+
+  const handleFileClick = (file: NoteFile) => {
+    if (file.type === 'notebook' && file.notebookPageIds && file.notebookPageIds.length > 0) {
+      // Find the currently active page if it belongs to this notebook, otherwise go to first page
+      const activePage = (file.notebookPageIds || []).includes(activeDocumentId || '')
+        ? activeDocumentId
+        : file.notebookPageIds[0];
+      useAppStore.setState({ activeDocumentId: activePage, activeView: 'canvas' });
+    } else {
+      setActiveDocument(file.id);
+    }
+  };
+
+  const renderFile = (file: NoteFile, depth: number) => {
+    const isActive = isNotebookActive(file);
+    return (
     <div key={file.id} 
-      onClick={() => setActiveDocument(file.id)}
+      onClick={() => handleFileClick(file)}
       onContextMenu={(e) => { 
         e.preventDefault();
         e.stopPropagation();
@@ -309,21 +328,25 @@ const Sidebar: React.FC = () => {
       title="Right-click for options"
       style={{ 
         padding: `8px 12px 8px ${12 + depth * 16}px`, 
-        backgroundColor: activeDocumentId === file.id && activeView === 'canvas' ? 'rgba(10, 122, 255, 0.15)' : 'transparent', 
+        backgroundColor: isActive ? 'rgba(10, 122, 255, 0.15)' : 'transparent', 
         borderRadius: '8px', 
         display: 'flex', 
         alignItems: 'center', 
         gap: '8px', 
         fontSize: '13px', 
-        fontWeight: activeDocumentId === file.id && activeView === 'canvas' ? 700 : 500, 
-        color: activeDocumentId === file.id && activeView === 'canvas' ? 'var(--accent-color)' : 'var(--text-primary)',
+        fontWeight: isActive ? 700 : 500, 
+        color: isActive ? 'var(--accent-color)' : 'var(--text-primary)',
         cursor: 'pointer', 
         marginBottom: '2px',
         transition: 'background 0.15s ease'
       }}
       className="btn-animate"
     >
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z"/></svg>
+      {file.type === 'notebook' ? (
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#34c759" strokeWidth="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
+      ) : (
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z"/></svg>
+      )}
       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{file.name}</span>
       {(file.tags || []).slice(0, 2).map(tid => {
         const t = tags.find(tag => tag.id === tid);
@@ -340,7 +363,8 @@ const Sidebar: React.FC = () => {
         ) : null;
       })()}
     </div>
-  );
+    );
+  };
 
   const renderFolder = (folderId: string | null, depth: number) => {
     const childFolders = folders.filter(f => f.parentId === folderId);

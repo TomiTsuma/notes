@@ -58,6 +58,14 @@ export interface Tag {
   createdAt: string;
 }
 
+export interface NotebookMeta {
+  pageWidth: number;
+  pageHeight: number;
+  lineSpacing: number;
+  lineColor: string;
+  marginColor: string;
+}
+
 export interface NoteFile {
   id: string;
   name: string;
@@ -68,6 +76,8 @@ export interface NoteFile {
   remotePath?: string;
   tags?: string[];
   serverStored?: boolean;
+  notebookPageIds?: string[];
+  notebookMeta?: NotebookMeta;
 }
 
 export interface SmartNoteSection {
@@ -201,6 +211,11 @@ export interface AppState {
   updateTextElement: (docId: string, textId: string, text: string) => void;
   deleteTextElement: (docId: string, textId: string) => void;
   updateTextElementPosition: (docId: string, textId: string, x: number, y: number) => void;
+  clearAnnotations: (docId: string) => void;
+
+  addNotebook: (name: string, projectId: string | null) => string;
+  addNotebookPage: (notebookId: string) => void;
+  deleteNotebookPage: (notebookId: string, pageId: string) => void;
 
   setSmartNoteStatus: (docId: string, section: string, status: 'idle' | 'loading' | 'done' | 'error', content?: string) => void;
 
@@ -474,6 +489,76 @@ export const useAppStore = create<AppState>()((set) => ({
               textElements: docAnn.textElements.map(te => te.id === textId ? { ...te, text } : te)
             }
           }
+        };
+      }),
+
+      clearAnnotations: (docId) => set(state => {
+        const docAnn = state.annotations[docId] || { strokes: [], textElements: [] };
+        return {
+          annotations: {
+            ...state.annotations,
+            [docId]: { ...docAnn, strokes: [], textElements: [] }
+          }
+        };
+      }),
+
+      addNotebook: (name, projectId) => {
+        const notebookId = `notebook-${Date.now()}`;
+        const pageIds = Array.from({ length: 3 }, (_, i) => `${notebookId}-pg-${i + 1}`);
+        const notebookFile: NoteFile = {
+          id: notebookId,
+          name: name.endsWith('.notebook') ? name : `${name}.notebook`,
+          type: 'notebook',
+          folderId: null,
+          projectId,
+          notebookPageIds: pageIds,
+          notebookMeta: {
+            pageWidth: 800,
+            pageHeight: 1130,
+            lineSpacing: 32,
+            lineColor: '#d4d4d8',
+            marginColor: '#ffcccc',
+          },
+        };
+        set(state => ({
+          files: [...state.files, notebookFile],
+          activeDocumentId: pageIds[0],
+          activeView: 'canvas',
+          userStreak: {
+            ...state.userStreak,
+            totalNotesCreated: state.userStreak.totalNotesCreated + 1,
+            lastActiveDate: new Date().toISOString().split('T')[0],
+          }
+        }));
+        return notebookId;
+      },
+
+      addNotebookPage: (notebookId) => set(state => {
+        const file = state.files.find(f => f.id === notebookId);
+        if (!file || file.type !== 'notebook') return state;
+        const pageNum = (file.notebookPageIds?.length || 0) + 1;
+        const newPageId = `${notebookId}-pg-${pageNum}`;
+        return {
+          files: state.files.map(f =>
+            f.id === notebookId ? { ...f, notebookPageIds: [...(f.notebookPageIds || []), newPageId] } : f
+          )
+        };
+      }),
+
+      deleteNotebookPage: (notebookId, pageId) => set(state => {
+        const file = state.files.find(f => f.id === notebookId);
+        if (!file || file.type !== 'notebook') return state;
+        const newPageIds = (file.notebookPageIds || []).filter(id => id !== pageId);
+        const newAnnotations = { ...state.annotations };
+        delete newAnnotations[pageId];
+        return {
+          files: state.files.map(f =>
+            f.id === notebookId ? { ...f, notebookPageIds: newPageIds } : f
+          ),
+          annotations: newAnnotations,
+          activeDocumentId: state.activeDocumentId === pageId
+            ? (newPageIds[0] || null)
+            : state.activeDocumentId,
         };
       }),
 

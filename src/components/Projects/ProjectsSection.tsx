@@ -12,6 +12,7 @@ const ProjectsSection: React.FC = () => {
     deleteProject, 
     updateProject,
     addFile,
+    addNotebook,
     setActiveDocument,
     setActiveView,
     associateFileToProject
@@ -25,6 +26,8 @@ const ProjectsSection: React.FC = () => {
   const [newNoteName, setNewNoteName] = useState('');
   const [newNoteType, setNewNoteType] = useState<'md' | 'txt'>('md');
   const [showNoteForm, setShowNoteForm] = useState(false);
+  const [showNotebookForm, setShowNotebookForm] = useState(false);
+  const [newNotebookName, setNewNotebookName] = useState('');
 
   const activeProj = projects.find(p => p.id === selectedProjectId) || projects[0] || null;
 
@@ -71,6 +74,14 @@ const ProjectsSection: React.FC = () => {
     setShowNoteForm(false);
     setActiveDocument(newNoteId);
     setActiveView('canvas');
+  };
+
+  const handleAddNotebook = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newNotebookName.trim() || !activeProj) return;
+    addNotebook(newNotebookName, activeProj.id);
+    setNewNotebookName('');
+    setShowNotebookForm(false);
   };
 
   const handleDeleteProj = () => {
@@ -254,14 +265,44 @@ const ProjectsSection: React.FC = () => {
           <div style={{ marginTop: '12px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <h3 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)' }}>Linked Notes & Files</h3>
-              <button 
-                onClick={() => setShowNoteForm(true)}
-                style={{ border: 'none', background: 'rgba(10, 122, 255, 0.08)', color: '#0a7aff', fontWeight: 800, fontSize: '12px', padding: '8px 14px', borderRadius: '10px', cursor: 'pointer' }}
-                className="btn-animate"
-              >
-                + Add Note
-              </button>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button 
+                  onClick={() => setShowNotebookForm(true)}
+                  style={{ border: 'none', background: 'rgba(52, 199, 89, 0.08)', color: '#34c759', fontWeight: 800, fontSize: '12px', padding: '8px 14px', borderRadius: '10px', cursor: 'pointer' }}
+                  className="btn-animate"
+                >
+                  + Notebook
+                </button>
+                <button 
+                  onClick={() => setShowNoteForm(true)}
+                  style={{ border: 'none', background: 'rgba(10, 122, 255, 0.08)', color: '#0a7aff', fontWeight: 800, fontSize: '12px', padding: '8px 14px', borderRadius: '10px', cursor: 'pointer' }}
+                  className="btn-animate"
+                >
+                  + Add Note
+                </button>
+              </div>
             </div>
+
+            {/* Notebook Creation Mini Form */}
+            {showNotebookForm && (
+              <form onSubmit={handleAddNotebook} className="glass-card" style={{ padding: '20px', display: 'flex', gap: '12px', flexDirection: 'column', marginBottom: '16px', border: '1px solid rgba(0,0,0,0.08)' }}>
+                <h4 style={{ fontSize: '13px', fontWeight: 800 }}>Create Notebook</h4>
+                <p style={{ fontSize: '11px', color: 'var(--text-secondary)', margin: 0 }}>A lined notebook for handwriting with your Apple Pencil.</p>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <input 
+                    value={newNotebookName}
+                    onChange={e => setNewNotebookName(e.target.value)}
+                    placeholder="Notebook title (e.g. Meeting Notes)"
+                    required
+                    style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', fontSize: '13px' }}
+                  />
+                </div>
+                <div style={{ display: 'flex', gap: '8px', alignSelf: 'flex-end' }}>
+                  <button type="button" onClick={() => setShowNotebookForm(false)} style={{ border: 'none', padding: '8px 12px', borderRadius: '8px', fontSize: '11px', fontWeight: 700, cursor: 'pointer', background: '#f0f0f5' }}>Cancel</button>
+                  <button type="submit" style={{ border: 'none', padding: '8px 12px', borderRadius: '8px', fontSize: '11px', fontWeight: 700, cursor: 'pointer', background: '#34c759', color: 'white' }}>Create Notebook</button>
+                </div>
+              </form>
+            )}
 
             {/* Note Creation Mini Form */}
             {showNoteForm && (
@@ -299,17 +340,25 @@ const ProjectsSection: React.FC = () => {
                   className="glass-card glass-card-hover"
                   style={{ padding: '16px', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: '12px', border: '1px solid rgba(0,0,0,0.03)' }}
                   onClick={() => {
-                    setActiveDocument(file.id);
+                    if (file.type === 'notebook' && file.notebookPageIds && file.notebookPageIds.length > 0) {
+                      setActiveDocument(file.notebookPageIds[0]);
+                    } else {
+                      setActiveDocument(file.id);
+                    }
                     setActiveView('canvas');
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: `${activeProj.color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: activeProj.color }}>
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z"/></svg>
+                    <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: file.type === 'notebook' ? 'rgba(52, 199, 89, 0.1)' : `${activeProj.color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: file.type === 'notebook' ? '#34c759' : activeProj.color }}>
+                      {file.type === 'notebook' ? (
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="16" y2="11"/><line x1="8" y1="15" x2="13" y2="15"/></svg>
+                      ) : (
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z"/></svg>
+                      )}
                     </div>
                     <div style={{ minWidth: 0, flex: 1 }}>
                       <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</div>
-                      <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '2px', fontWeight: 600 }}>{file.type.toUpperCase()} File</div>
+                      <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '2px', fontWeight: 600 }}>{file.type === 'notebook' ? `${file.notebookPageIds?.length || 0} pages` : file.type.toUpperCase() + ' File'}</div>
                     </div>
                   </div>
                   <div 
