@@ -5,7 +5,7 @@ import { PenIcon, HighlighterIcon, TextIcon, EraserIcon } from './Icons';
 import './RadialToolMenu.css';
 
 const ToolPalette: React.FC = () => {
-  const { activeTool, setActiveTool, brushColor, setBrushColor, brushSize, setBrushSize, undo, activeView } = useAppStore();
+  const { activeTool, setActiveTool, brushColor, setBrushColor, brushSize, setBrushSize, undo, activeView, palmRejection, togglePalmRejection } = useAppStore();
   const [expanded, setExpanded] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
 
@@ -108,6 +108,23 @@ const ToolPalette: React.FC = () => {
                 SIZE <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{activeTool === 'highlighter' ? brushSize * 3 : brushSize}px</span>
               </div>
               <input type="range" min={2} max={16} value={brushSize} onChange={e => setBrushSize(Number(e.target.value))} />
+              <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-secondary)', letterSpacing: '0.05em' }}>PALM REJECTION</span>
+                <button
+                  onClick={togglePalmRejection}
+                  style={{
+                    width: 36, height: 20, borderRadius: 10, border: 'none', cursor: 'pointer', padding: 0,
+                    background: palmRejection ? 'var(--accent-color)' : 'var(--border-color)',
+                    position: 'relative', transition: 'background 0.2s ease',
+                  }}
+                >
+                  <span style={{
+                    position: 'absolute', top: 2, left: palmRejection ? 18 : 2,
+                    width: 16, height: 16, borderRadius: '50%', background: 'white',
+                    transition: 'left 0.2s ease', boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                  }} />
+                </button>
+              </div>
             </>
           )}
         </div>

@@ -1,6 +1,12 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../../store/appStore';
 import { v4 as uuidv4 } from 'uuid';
+import DailyTodoCard from './DailyTodoCard';
+import {
+  StreakIcon, AgendaIcon, TaskSummaryIcon, ProjectsIcon,
+  NotebookIcon, PlusIcon, FileIcon, CalendarIcon,
+  KanbanIcon, CheckCircleIcon,
+} from '../UI/Icons';
 
 const HomeDashboard: React.FC = () => {
   const { 
@@ -95,7 +101,7 @@ const HomeDashboard: React.FC = () => {
         <div className="glass-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontWeight: 800, fontSize: '15px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              🔥 Active Streak
+              <StreakIcon width={16} height={16} stroke="#ff9500" /> Active Streak
             </span>
             <span style={{ fontSize: '12px', fontWeight: 700, backgroundColor: 'rgba(255, 149, 0, 0.12)', color: '#ff9500', padding: '4px 10px', borderRadius: '8px' }}>
               Consistency
@@ -160,7 +166,7 @@ const HomeDashboard: React.FC = () => {
         <div className="glass-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', justifySelf: 'stretch' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
             <span style={{ fontWeight: 800, fontSize: '15px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              📅 Today's Agenda
+              <AgendaIcon width={16} height={16} stroke="var(--accent-color)" /> Today's Agenda
             </span>
             <button 
               onClick={() => setActiveView('calendar')}
@@ -198,19 +204,21 @@ const HomeDashboard: React.FC = () => {
 
         {/* Quick Tools & Reminders */}
         <div className="glass-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <div style={{ fontWeight: 800, fontSize: '15px', color: 'var(--text-primary)' }}>💡 Task Summary</div>
+          <div style={{ fontWeight: 800, fontSize: '15px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <TaskSummaryIcon width={16} height={16} stroke="var(--accent-color)" /> Task Summary
+          </div>
           
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: 700, padding: '8px', borderRadius: '10px', backgroundColor: 'rgba(0,0,0,0.02)' }}>
-              <span style={{ color: '#ff2d55' }}>🔴 To Do Pending</span>
+              <span style={{ color: '#ff2d55', display: 'flex', alignItems: 'center', gap: 5 }}><CheckCircleIcon width={13} height={13} stroke="#ff2d55" /> Pending</span>
               <span>{kanbanTasks.filter(t => t.status === 'todo').length} Tasks</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: 700, padding: '8px', borderRadius: '10px', backgroundColor: 'rgba(0,0,0,0.02)' }}>
-              <span style={{ color: '#0a7aff' }}>🔵 In Progress</span>
+              <span style={{ color: '#0a7aff', display: 'flex', alignItems: 'center', gap: 5 }}><KanbanIcon width={13} height={13} stroke="#0a7aff" /> In Progress</span>
               <span>{kanbanTasks.filter(t => t.status === 'inprogress').length} Tasks</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: 700, padding: '8px', borderRadius: '10px', backgroundColor: 'rgba(0,0,0,0.02)' }}>
-              <span style={{ color: '#34c759' }}>🟢 Completed Tasks</span>
+              <span style={{ color: '#34c759', display: 'flex', alignItems: 'center', gap: 5 }}><CheckCircleIcon width={13} height={13} stroke="#34c759" /> Completed</span>
               <span>{kanbanTasks.filter(t => t.status === 'done').length} Tasks</span>
             </div>
           </div>
@@ -237,10 +245,15 @@ const HomeDashboard: React.FC = () => {
 
       </div>
 
+      {/* Daily Todo List */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '24px' }}>
+        <DailyTodoCard />
+      </div>
+
       {/* Projects Section Grid */}
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-          <h2 style={{ fontSize: '20px', fontWeight: 800, color: 'var(--text-primary)' }}>📂 Active Projects</h2>
+          <h2 style={{ fontSize: '20px', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}><ProjectsIcon width={18} height={18} stroke="var(--accent-color)" /> Active Projects</h2>
           <button 
             onClick={() => setActiveView('projects')}
             style={{ background: 'transparent', border: 'none', color: '#0a7aff', fontWeight: 800, fontSize: '13px', cursor: 'pointer' }}
@@ -319,7 +332,7 @@ const HomeDashboard: React.FC = () => {
 
       {/* Recent Notebooks Row */}
       <div>
-        <h2 style={{ fontSize: '20px', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '14px' }}>📝 Recent Notebooks</h2>
+        <h2 style={{ fontSize: '20px', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: 8 }}><NotebookIcon width={18} height={18} stroke="var(--accent-color)" /> Recent Notebooks</h2>
         
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '16px' }}>
           {files.slice(-4).reverse().map(file => {
@@ -344,7 +357,7 @@ const HomeDashboard: React.FC = () => {
                   justifyContent: 'center', 
                   color: proj?.color || '#8e8e93' 
                 }}>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z"/></svg>
+                  <FileIcon width={20} height={20} />
                 </div>
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

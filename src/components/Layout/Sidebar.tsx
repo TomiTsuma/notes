@@ -10,6 +10,11 @@ import {
   type NextcloudPaper,
 } from '../../services/nextcloud';
 import NextcloudFolderPicker from '../Modals/NextcloudFolderPicker';
+import {
+  HomeIcon, ProjectsIcon, KanbanIcon, CalendarIcon, CanvasIcon,
+  CloudIcon, TagIcon, FolderIcon, UploadIcon, RefreshIcon,
+  WallpaperIcon, PlusIcon, ChevronRightIcon, NotebookIcon, FileIcon,
+} from '../UI/Icons';
 
 const Sidebar: React.FC = () => {
   const { 
@@ -342,18 +347,19 @@ const Sidebar: React.FC = () => {
       }}
       className="btn-animate"
     >
-      {file.type === 'notebook' ? (
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#34c759" strokeWidth="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
-      ) : (
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z"/></svg>
-      )}
+      {file.type === 'notebook'
+        ? <NotebookIcon width={15} height={15} stroke="#34c759" />
+        : <FileIcon width={15} height={15} />
+      }
       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{file.name}</span>
       {(file.tags || []).slice(0, 2).map(tid => {
         const t = tags.find(tag => tag.id === tid);
         return t ? <span key={tid} style={{ fontSize: 8, padding: '2px 5px', borderRadius: 6, background: 'rgba(10,122,255,0.12)', color: '#0a7aff', fontWeight: 800 }}>{t.name.slice(0, 8)}</span> : null;
       })}
       <button onClick={(e) => { e.stopPropagation(); setTaggingFileId(file.id); setShowTagsPanel(true); }} title="Manage tags"
-        style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 10, color: 'var(--text-secondary)' }}>🏷</button>
+        style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, color: 'var(--text-secondary)', display: 'flex' }}>
+        <TagIcon width={12} height={12} />
+      </button>
       {file.projectId && (() => {
         const p = projects.find(proj => proj.id === file.projectId);
         return p ? (
@@ -387,14 +393,14 @@ const Sidebar: React.FC = () => {
               style={{ padding: `8px 12px 8px ${12 + depth * 16}px`, borderRadius: '8px', marginBottom: '2px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer', fontWeight: 600, color: 'var(--text-sidebar)' }}
               className="btn-animate"
             >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ transform: isExp ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }}><path d="M9 18l6-6-6-6"/></svg>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2v11z"/></svg>
+              <ChevronRightIcon width={12} height={12} style={{ transform: isExp ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s ease' }} />
+              <FolderIcon width={15} height={15} />
               <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{folder.name}</span>
               
-              <div style={{ display: 'flex', gap: '6px' }}>
-                <span onClick={(e) => triggerUpload(folderId, e)} title="Upload File" style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>↑</span>
-                <span onClick={(e) => triggerFolderUpload(folderId, e)} title="Upload Folder" style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>📁</span>
-                <span onClick={(e) => handleNewFolder(folderId, e)} title="New Subfolder" style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>+</span>
+              <div style={{ display: 'flex', gap: '4px' }}>
+                <span onClick={(e) => triggerUpload(folderId, e)} title="Upload File" style={{ color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex' }}><UploadIcon width={13} height={13} /></span>
+                <span onClick={(e) => triggerFolderUpload(folderId, e)} title="Upload Folder" style={{ color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex' }}><FolderIcon width={13} height={13} /></span>
+                <span onClick={(e) => handleNewFolder(folderId, e)} title="New Subfolder" style={{ color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex' }}><PlusIcon width={13} height={13} /></span>
               </div>
             </div>
           );
@@ -414,7 +420,8 @@ const Sidebar: React.FC = () => {
   const renderNavItem = (view: typeof activeView, label: string, icon: React.ReactNode) => {
     const isActive = activeView === view;
     return (
-      <div 
+      <div
+        className="btn-animate sidebar-nav-item"
         onClick={() => {
           setActiveView(view);
           if (view === 'canvas' && files.length > 0 && !activeDocumentId) {
@@ -422,25 +429,19 @@ const Sidebar: React.FC = () => {
           }
         }}
         style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '12px',
-          padding: '10px 16px',
-          borderRadius: '12px',
-          fontSize: '14px',
-          fontWeight: isActive ? 800 : 600,
+          display: 'flex', alignItems: 'center', gap: '12px',
+          padding: '10px 16px', borderRadius: '12px',
+          fontSize: '14px', fontWeight: isActive ? 800 : 600,
           color: isActive ? 'var(--accent-color)' : 'var(--text-muted)',
           backgroundColor: isActive ? 'var(--accent-light)' : 'transparent',
-          cursor: 'pointer',
-          marginBottom: '4px',
-          transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)'
+          cursor: 'pointer', marginBottom: '4px',
+          transition: 'all 0.22s cubic-bezier(0.16, 1, 0.3, 1)',
         }}
-        className="btn-animate"
       >
         {icon}
         <span style={{ flex: 1 }}>{label}</span>
         {isActive && (
-          <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#0a7aff' }} />
+          <div style={{ width: '5px', height: '5px', borderRadius: '50%', backgroundColor: 'var(--accent-color)', flexShrink: 0 }} />
         )}
       </div>
     );
@@ -534,21 +535,11 @@ const Sidebar: React.FC = () => {
       
       {/* Main Suite Navigation */}
       <div style={{ padding: '0 12px 16px', borderBottom: '1px solid var(--border-subtle)' }}>
-        {renderNavItem('home', 'Dashboard', 
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-        )}
-        {renderNavItem('projects', 'Project Hub', 
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2v11z"/></svg>
-        )}
-        {renderNavItem('kanban', 'Kanban Board', 
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
-        )}
-        {renderNavItem('calendar', 'Calendar Planner', 
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-        )}
-        {(files.length > 0 || activeDocumentId) && renderNavItem('canvas', 'Active Note Canvas', 
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4Z"/></svg>
-        )}
+        {renderNavItem('home',     'Dashboard',       <HomeIcon />)}
+        {renderNavItem('projects', 'Project Hub',     <ProjectsIcon />)}
+        {renderNavItem('kanban',   'Kanban Board',    <KanbanIcon />)}
+        {renderNavItem('calendar', 'Calendar Planner',<CalendarIcon />)}
+        {(files.length > 0 || activeDocumentId) && renderNavItem('canvas', 'Note Canvas', <CanvasIcon />)}
       </div>
 
       {/* Sidebar Content Scroll Area */}
@@ -613,8 +604,8 @@ const Sidebar: React.FC = () => {
               padding: '6px 8px'
             }}
           >
-            <span>☁️ NEXTCLOUD CLIENT</span>
-            <span>{showNextcloudPanel ? '▲' : '▼'}</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><CloudIcon width={12} height={12} /> NEXTCLOUD</span>
+            <ChevronRightIcon width={12} height={12} style={{ transform: showNextcloudPanel ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s ease' }} />
           </div>
           
           {showNextcloudPanel && (
@@ -695,8 +686,8 @@ const Sidebar: React.FC = () => {
         {/* Tags Section */}
         <div style={{ marginBottom: '20px', background: 'var(--bg-inset)', borderRadius: '14px', padding: '8px' }}>
           <div onClick={() => setShowTagsPanel(!showTagsPanel)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontWeight: 800, fontSize: '11px', color: 'var(--text-secondary)', cursor: 'pointer', padding: '6px 8px' }}>
-            <span>🏷 RESEARCH TAGS</span>
-            <span>{showTagsPanel ? '▲' : '▼'}</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><TagIcon width={12} height={12} /> RESEARCH TAGS</span>
+            <ChevronRightIcon width={12} height={12} style={{ transform: showTagsPanel ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s ease' }} />
           </div>
           {showTagsPanel && (
             <div style={{ padding: '8px 4px', display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -743,14 +734,14 @@ const Sidebar: React.FC = () => {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', padding: '0 8px' }}>
             <span style={{ fontWeight: 800, fontSize: '11px', color: 'var(--text-secondary)', letterSpacing: '0.5px' }}>NOTEBOOKS</span>
             <div style={{ display: 'flex', gap: '8px' }}>
-               <button onClick={() => triggerUpload(null)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0 }} title="Upload File">
-                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+               <button onClick={() => triggerUpload(null)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, color: 'var(--text-secondary)', display: 'flex' }} title="Upload File">
+                 <UploadIcon width={14} height={14} />
                </button>
-               <button onClick={() => triggerFolderUpload(null)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, fontSize: '11px' }} title="Upload Folder">
-                 📁
+               <button onClick={() => triggerFolderUpload(null)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, color: 'var(--text-secondary)', display: 'flex' }} title="Upload Folder">
+                 <FolderIcon width={14} height={14} />
                </button>
-               <button onClick={(e) => handleNewFolder(null, e)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, color: 'var(--text-secondary)' }} title="Add Folder">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14"/></svg>
+               <button onClick={(e) => handleNewFolder(null, e)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, color: 'var(--text-secondary)', display: 'flex' }} title="Add Folder">
+                 <PlusIcon width={14} height={14} />
                </button>
             </div>
           </div>
@@ -797,7 +788,7 @@ const Sidebar: React.FC = () => {
           }}
           className="btn-animate"
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent-color)" strokeWidth="2.5"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+          <WallpaperIcon width={14} height={14} stroke="var(--accent-color)" />
           Change Wallpaper
         </button>
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600 }}>
@@ -872,7 +863,7 @@ const Sidebar: React.FC = () => {
             fontSize: 13, fontFamily: 'Nunito',
           }} onClick={(e) => e.stopPropagation()}>
             <div style={{ padding: '6px 14px', fontWeight: 700, fontSize: 11, color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-subtle)', marginBottom: 2 }}>
-              📁 {folderName}
+              <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><FolderIcon width={11} height={11} /> {folderName}</span>
             </div>
             <div style={{ padding: '6px 14px', cursor: 'pointer' }} onClick={() => { setCtxMenu(null); if (folder) { const n = prompt('Rename folder:', folder.name); if (n) updateFolder(folder.id, n); } }}>Rename</div>
             {folderFileCount > 0 && (

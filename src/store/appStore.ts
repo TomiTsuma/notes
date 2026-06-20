@@ -134,6 +134,15 @@ export interface ChatMessage {
   timestamp: string;
 }
 
+export interface DailyTodo {
+  id: string;
+  text: string;
+  dueTime?: string; // "HH:MM"
+  completed: boolean;
+  date: string; // "YYYY-MM-DD"
+  createdAt: string;
+}
+
 export interface UserStreak {
   streakCount: number;
   lastActiveDate: string;
@@ -178,9 +187,17 @@ export interface AppState {
   chatHistory: Record<string, ChatMessage[]>;
   userStreak: UserStreak;
 
+  palmRejection: boolean;
+  dailyTodos: DailyTodo[];
+
   setActiveTool: (tool: ToolType) => void;
   setBrushColor: (color: string) => void;
   setBrushSize: (size: number) => void;
+  togglePalmRejection: () => void;
+  addDailyTodo: (todo: DailyTodo) => void;
+  toggleDailyTodo: (id: string) => void;
+  deleteDailyTodo: (id: string) => void;
+  updateDailyTodo: (id: string, text: string, dueTime?: string) => void;
   
   addFolder: (folder: Folder) => void;
   addFile: (file: NoteFile) => void;
@@ -267,6 +284,8 @@ export function getPersistedSnapshot(state: AppState): Record<string, unknown> {
     activeView: state.activeView,
     selectedProjectId: state.selectedProjectId,
     currentBackground: state.currentBackground,
+    palmRejection: state.palmRejection,
+    dailyTodos: state.dailyTodos,
     theme: state.theme,
     calendarViewMode: state.calendarViewMode,
     selectedCalendarDate: state.selectedCalendarDate,
@@ -282,6 +301,8 @@ export const useAppStore = create<AppState>()((set) => ({
       activeTool: 'pen',
       brushColor: '#1c1c1e',
       brushSize: 4,
+      palmRejection: false,
+      dailyTodos: [],
       focusedTextId: null,
       
       folders: [],
@@ -343,6 +364,15 @@ export const useAppStore = create<AppState>()((set) => ({
       setActiveTool: (tool) => set({ activeTool: tool }),
       setBrushColor: (color) => set({ brushColor: color }),
       setBrushSize: (size) => set({ brushSize: size }),
+      togglePalmRejection: () => set(state => ({ palmRejection: !state.palmRejection })),
+      addDailyTodo: (todo) => set(state => ({ dailyTodos: [...state.dailyTodos, todo] })),
+      toggleDailyTodo: (id) => set(state => ({
+        dailyTodos: state.dailyTodos.map(t => t.id === id ? { ...t, completed: !t.completed } : t)
+      })),
+      deleteDailyTodo: (id) => set(state => ({ dailyTodos: state.dailyTodos.filter(t => t.id !== id) })),
+      updateDailyTodo: (id, text, dueTime) => set(state => ({
+        dailyTodos: state.dailyTodos.map(t => t.id === id ? { ...t, text, dueTime } : t)
+      })),
       
       addFolder: (folder) => set(state => ({ folders: [...state.folders, folder] })),
       addFile: (file) => set(state => {

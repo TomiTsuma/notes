@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import './App.css';
 import Sidebar from './components/Layout/Sidebar';
 import DocumentHeader from './components/Layout/DocumentHeader';
@@ -21,6 +21,11 @@ function App() {
   const [showSidebar, setShowSidebar] = useState(true);
   const [bgFading, setBgFading] = useState(false);
 
+  // View transition state — fade-out current, swap, fade-in next
+  const [displayView, setDisplayView] = useState(activeView);
+  const [viewPhase, setViewPhase] = useState<'enter' | 'exit'>('enter');
+  const transitionRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     const updateLayout = () => {
       const narrow = window.innerWidth <= 1000;
@@ -37,6 +42,17 @@ function App() {
     document.documentElement.style.colorScheme = theme;
   }, [theme]);
 
+  useEffect(() => {
+    if (activeView === displayView) return;
+    if (transitionRef.current) clearTimeout(transitionRef.current);
+    setViewPhase('exit');
+    transitionRef.current = setTimeout(() => {
+      setDisplayView(activeView);
+      setViewPhase('enter');
+    }, 180);
+    return () => { if (transitionRef.current) clearTimeout(transitionRef.current); };
+  }, [activeView]);
+
   // Rotate wallpaper every 10s on dashboard with a proper fade transition
   useEffect(() => {
     if (activeView !== 'home') return;
@@ -50,16 +66,12 @@ function App() {
     return () => clearInterval(interval);
   }, [activeView, rotateBackground]);
 
-  const renderActiveView = () => {
-    switch (activeView) {
-      case 'home':
-        return <HomeDashboard />;
-      case 'projects':
-        return <ProjectsSection />;
-      case 'kanban':
-        return <KanbanBoard />;
-      case 'calendar':
-        return <CalendarView />;
+  const renderView = (view: typeof activeView) => {
+    switch (view) {
+      case 'home':     return <HomeDashboard />;
+      case 'projects': return <ProjectsSection />;
+      case 'kanban':   return <KanbanBoard />;
+      case 'calendar': return <CalendarView />;
       case 'canvas':
       default:
         return (
@@ -105,7 +117,9 @@ function App() {
           <ThemeToggle />
         </DocumentHeader>
 
-        {renderActiveView()}
+        <div className={`view-wrapper view-${viewPhase}`}>
+          {renderView(displayView)}
+        </div>
       </div>
 
       {showRightPanel && <RightPanel />}

@@ -83,7 +83,7 @@ function strokeHitTest(stroke: Stroke, x: number, y: number, brushSize: number):
 }
 
 const DrawingCanvas: React.FC<{ documentId?: string }> = ({ documentId }) => {
-  const { activeTool, brushColor, brushSize, activeDocumentId, annotations, setStrokes, translateStrokes, addTextElement, setFocusedTextId, deleteTextElement } = useAppStore();
+  const { activeTool, brushColor, brushSize, activeDocumentId, annotations, setStrokes, translateStrokes, addTextElement, setFocusedTextId, deleteTextElement, palmRejection } = useAppStore();
   
   const effectiveDocId = documentId || activeDocumentId;
   const isActive = effectiveDocId === activeDocumentId;
@@ -106,6 +106,7 @@ const DrawingCanvas: React.FC<{ documentId?: string }> = ({ documentId }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const liveCanvasRef = useRef<HTMLCanvasElement>(null);
   const holdTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const drawingPointerIdRef = useRef<number | null>(null);
   
   // Refs to always have latest values in native event listeners
   const activeToolRef = useRef(activeTool);
@@ -114,12 +115,14 @@ const DrawingCanvas: React.FC<{ documentId?: string }> = ({ documentId }) => {
   const effectiveDocIdRef = useRef(effectiveDocId);
   const isActiveRef = useRef(isActive);
   const snapModeRef = useRef(snapMode);
+  const palmRejectionRef = useRef(palmRejection);
   activeToolRef.current = activeTool;
   brushColorRef.current = brushColor;
   brushSizeRef.current = brushSize;
   effectiveDocIdRef.current = effectiveDocId;
   isActiveRef.current = isActive;
   snapModeRef.current = snapMode;
+  palmRejectionRef.current = palmRejection;
 
   // Cached rect ref - updated on resize AND scroll
   const rectRef = useRef({ left: 0, top: 0, width: 0, height: 0 });
@@ -219,6 +222,7 @@ const DrawingCanvas: React.FC<{ documentId?: string }> = ({ documentId }) => {
     };
 
     const onPointerMove = (e: PointerEvent) => {
+      if (palmRejectionRef.current && e.pointerType === 'touch') return;
       const tool = activeToolRef.current;
       if (!effectiveDocIdRef.current || !isActiveRef.current) return;
 
@@ -226,7 +230,7 @@ const DrawingCanvas: React.FC<{ documentId?: string }> = ({ documentId }) => {
       const rt = rectRef.current.top;
 
       // Handle eraser during pointer move
-      if (tool === 'eraser' && e.buttons === 1) {
+      if (tool === 'eraser' && e.buttons === 1 && (drawingPointerIdRef.current === null || e.pointerId === drawingPointerIdRef.current)) {
         const x = e.clientX - rl;
         const y = e.clientY - rt;
         const docId = effectiveDocIdRef.current;
@@ -238,6 +242,7 @@ const DrawingCanvas: React.FC<{ documentId?: string }> = ({ documentId }) => {
       }
 
       if (!isDrawingRef.current) return;
+      if (e.pointerId !== drawingPointerIdRef.current) return;
       if (tool !== 'pen' && tool !== 'highlighter' && tool !== 'ruler') return;
 
       // Collect all coalesced events for this frame
@@ -253,9 +258,12 @@ const DrawingCanvas: React.FC<{ documentId?: string }> = ({ documentId }) => {
       }
     };
 
-    const onPointerUp = () => {
+    const onPointerUp = (e: PointerEvent) => {
+      if (palmRejectionRef.current && e.pointerType === 'touch') return;
       if (!isDrawingRef.current) return;
+      if (e.pointerId !== drawingPointerIdRef.current) return;
       isDrawingRef.current = false;
+      drawingPointerIdRef.current = null;
 
       if (holdTimeoutRef.current) clearTimeout(holdTimeoutRef.current);
 
@@ -360,6 +368,7 @@ const DrawingCanvas: React.FC<{ documentId?: string }> = ({ documentId }) => {
   }, [effectiveDocId, isActive, brushSize, setStrokes, textElements, deleteTextElement]);
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    if (palmRejection && e.pointerType === 'touch') return;
     if ((e.target as Element).closest('.text-element')) return;
     // Don't use setPointerCapture - we listen on window for move/up
     if (!effectiveDocId || !isActive) return;
@@ -408,6 +417,7 @@ const DrawingCanvas: React.FC<{ documentId?: string }> = ({ documentId }) => {
     }
 
     isDrawingRef.current = true;
+    drawingPointerIdRef.current = e.pointerId;
     currentStrokeRef.current = [[x, y, 0.5]];
     setSnapMode(activeTool === 'ruler');
 
@@ -431,7 +441,7 @@ const DrawingCanvas: React.FC<{ documentId?: string }> = ({ documentId }) => {
         setSnapMode(true);
       }, 400); 
     }
-  }, [activeTool, lassoBox, effectiveDocId, isActive, addTextElement, setFocusedTextId, eraseAt, brushColor, brushSize]);
+  }, [activeTool, lassoBox, effectiveDocId, isActive, addTextElement, setFocusedTextId, eraseAt, brushColor, brushSize, palmRejection]);
 
   const handlePointerMoveReact = useCallback((e: React.PointerEvent) => {
     if (activeTool !== 'select' || isDrawingRef.current) return;
