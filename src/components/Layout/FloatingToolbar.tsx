@@ -1,6 +1,6 @@
 import React from 'react';
 import { useAppStore } from '../../store/appStore';
-import { PenIcon, HighlighterIcon, TextIcon, EraserIcon, StickyNoteIcon } from '../UI/Icons';
+import { PenIcon, HighlighterIcon, TextIcon, EraserIcon } from '../UI/Icons';
 
 const iconBase = {
   width: 20,

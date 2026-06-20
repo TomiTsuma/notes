@@ -21,9 +21,12 @@ function App() {
   const [showSidebar, setShowSidebar] = useState(true);
   const [bgFading, setBgFading] = useState(false);
 
-  // View transition state — fade-out current, swap, fade-in next
+  // View transition state — fade-out current, swap, fade-in next.
+  // Initial phase is null so the first render has no animation class (avoids
+  // the iOS Safari bug where opacity:0 from animation-fill-mode:both can
+  // leave the app invisible if the CSS animation stalls on first load).
   const [displayView, setDisplayView] = useState(activeView);
-  const [viewPhase, setViewPhase] = useState<'enter' | 'exit'>('enter');
+  const [viewPhase, setViewPhase] = useState<'enter' | 'exit' | null>(null);
   const transitionRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -117,7 +120,7 @@ function App() {
           <ThemeToggle />
         </DocumentHeader>
 
-        <div className={`view-wrapper view-${viewPhase}`}>
+        <div className={`view-wrapper${viewPhase ? ` view-${viewPhase}` : ''}`}>
           {renderView(displayView)}
         </div>
       </div>

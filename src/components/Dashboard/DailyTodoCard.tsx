@@ -53,15 +53,20 @@ const DailyTodoCard: React.FC = () => {
   }, []);
 
   const fireNotification = useCallback((title: string, body: string) => {
-    if (Notification.permission === 'granted') {
-      new Notification(title, { body, silent: false });
+    if (!('Notification' in window)) return;
+    try {
+      if (Notification.permission === 'granted') {
+        new Notification(title, { body, silent: false });
+      }
+    } catch {
+      // iOS Safari may throw even when permission is "granted" outside a PWA
     }
   }, []);
 
   // Poll every 60 seconds for approaching deadlines
   useEffect(() => {
     const check = () => {
-      if (Notification.permission !== 'granted') return;
+      if (!('Notification' in window) || Notification.permission !== 'granted') return;
       const today = new Date().toISOString().split('T')[0];
       const pending = dailyTodos.filter(t => t.date === today && !t.completed && t.dueTime);
 
@@ -106,7 +111,7 @@ const DailyTodoCard: React.FC = () => {
     toggleDailyTodo(id);
 
     // If completing a task, notify about the next upcoming one
-    if (todo && !todo.completed && Notification.permission === 'granted') {
+    if (todo && !todo.completed && ('Notification' in window) && Notification.permission === 'granted') {
       const next = todayTodos
         .filter(t => t.id !== id && !t.completed && t.dueTime)
         .sort((a, b) => a.dueTime!.localeCompare(b.dueTime!))[0];
@@ -143,7 +148,7 @@ const DailyTodoCard: React.FC = () => {
               {completed}/{total} done
             </span>
           )}
-          {notifPermission !== 'granted' && (
+          {('Notification' in window) && notifPermission !== 'granted' && (
             <button
               onClick={() => Notification.requestPermission().then(p => setNotifPermission(p))}
               style={{ fontSize: '11px', fontWeight: 700, background: 'rgba(255,149,0,0.1)', color: '#ff9500', border: 'none', borderRadius: '8px', padding: '4px 10px', cursor: 'pointer' }}

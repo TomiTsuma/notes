@@ -16,17 +16,28 @@
   padding: 0;
 }
 
-body, html {
+/* iOS Safari: 100vh includes the browser chrome, which collapses the layout.
+   Using height:100% on html/body lets the browser report the real usable height. */
+html {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
   margin: 0;
   width: 100%;
-  height: 100vh;
+  height: 100%;
+  /* Fallback for older iOS that misreports height */
+  min-height: -webkit-fill-available;
   overflow: hidden;
   user-select: none;
+  -webkit-user-select: none;
 }
 
 #root {
   width: 100%;
-  height: 100vh;
+  height: 100%;
   display: flex;
   flex-direction: row;
 }
@@ -92,11 +103,13 @@ body, html {
   border: 1px solid var(--border-color);
 }
 
-/* Custom view containers */
+/* Custom view containers — flex: 1 so it fills whatever height the parent flex column gives it.
+   Avoids 100vh calculations which are incorrect on iOS Safari. */
 .workspace-view-container {
   padding: 40px;
   overflow-y: auto;
-  height: calc(100vh - 56px);
+  flex: 1;
+  min-height: 0;
   width: 100%;
   display: flex;
   flex-direction: column;
@@ -187,6 +200,19 @@ body, html {
 .sidebar-nav-item:nth-child(3) { animation-delay: 160ms; }
 .sidebar-nav-item:nth-child(4) { animation-delay: 210ms; }
 .sidebar-nav-item:nth-child(5) { animation-delay: 260ms; }
+
+/* Respect OS reduce-motion preference — also prevents iOS Low Power Mode
+   from leaving animations stuck at opacity:0 */
+@media (prefers-reduced-motion: reduce) {
+  .view-enter, .view-exit,
+  .workspace-view-container > *,
+  .workspace-view-container .glass-card,
+  .sidebar-nav-item {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
 
 /* Glass-card lift on hover */
 .glass-card-hover {

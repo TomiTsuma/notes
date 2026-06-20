@@ -12,7 +12,7 @@ import {
 import NextcloudFolderPicker from '../Modals/NextcloudFolderPicker';
 import {
   HomeIcon, ProjectsIcon, KanbanIcon, CalendarIcon, CanvasIcon,
-  CloudIcon, TagIcon, FolderIcon, UploadIcon, RefreshIcon,
+  CloudIcon, TagIcon, FolderIcon, UploadIcon,
   WallpaperIcon, PlusIcon, ChevronRightIcon, NotebookIcon, FileIcon,
 } from '../UI/Icons';
 
