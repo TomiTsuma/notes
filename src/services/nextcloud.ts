@@ -2,7 +2,7 @@ import { createClient, AuthType } from 'webdav';
 import type { WebDAVClient, FileStat } from 'webdav';
 
 let client: WebDAVClient | null = null;
-let papersPath = '/Papers';
+let papersPath = '/';
 let syncPath = '/Chlio';
 let connectPromise: Promise<WebDAVClient> | null = null;
 
@@ -257,4 +257,18 @@ export const syncNotesToNextcloud = async (noteData: string, filename: string) =
   }
 
   await client.putFileContents(`${dirPath}/${filename}.json`, noteData, { overwrite: true });
+};
+
+export const createNextcloudDirectory = async (dirPath: string): Promise<string> => {
+  if (!client) throw new Error('Not connected to Nextcloud');
+  const targetDir = normalizeRemotePath(dirPath);
+  try {
+    const exists = await client.exists(targetDir);
+    if (!exists) {
+      await client.createDirectory(targetDir);
+    }
+  } catch {
+    await client.createDirectory(targetDir);
+  }
+  return targetDir;
 };

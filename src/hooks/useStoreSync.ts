@@ -22,7 +22,11 @@ export function useStoreSync() {
         if (cancelled) return;
 
         if (!empty && state) {
-          useAppStore.setState(state as unknown as Parameters<typeof useAppStore.setState>[0]);
+          const loadedState = state as Record<string, unknown>;
+          if (loadedState.nextcloudPapersPath === '/Papers') {
+            loadedState.nextcloudPapersPath = '/';
+          }
+          useAppStore.setState(loadedState as unknown as Parameters<typeof useAppStore.setState>[0]);
         } else {
           const legacyRaw = await get(IDB_LEGACY_KEY);
           let legacyState: Record<string, unknown> | null = null;
@@ -35,6 +39,9 @@ export function useStoreSync() {
             legacyState = (legacyRaw as { state: Record<string, unknown> }).state;
           }
           if (legacyState) {
+            if (legacyState.nextcloudPapersPath === '/Papers') {
+              legacyState.nextcloudPapersPath = '/';
+            }
             useAppStore.setState(legacyState as unknown as Parameters<typeof useAppStore.setState>[0]);
             await saveBootstrap(getPersistedSnapshot(useAppStore.getState()));
           }

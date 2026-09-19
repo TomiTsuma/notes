@@ -52,6 +52,7 @@ const ToolPalette: React.FC = () => {
   return (
     <div className="radial-fab-container">
       {expanded && <div className="radial-fab-backdrop" onClick={() => { setExpanded(false); setShowSettings(false); }} />}
+      <div className={`radial-fab-scrim ${expanded ? 'visible' : ''}`} />
 
       <div className="radial-tool-orbit">
         {mainTools.map((tool, i) => {

@@ -1,0 +1,156 @@
+/* ── Branched Menu Component (ReactBits Micro-Interaction) ── */
+.branched-menu-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  font-family: inherit;
+  user-select: none;
+}
+
+.branched-menu-group {
+  margin-bottom: 8px;
+  position: relative;
+}
+
+.branched-menu-parent {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: var(--bm-ink, var(--text-muted));
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.branched-menu-parent:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.branched-menu-parent.is-active {
+  background: var(--accent-light, rgba(0, 122, 255, 0.12));
+  color: var(--bm-accent, var(--accent-color));
+}
+
+.branched-menu-parent-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.branched-menu-chevron {
+  width: 12px;
+  height: 12px;
+  transition: transform 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+  color: var(--text-secondary);
+}
+
+.branched-menu-group.is-open .branched-menu-chevron {
+  transform: rotate(90deg);
+}
+
+/* Branch Children Container */
+.branched-menu-children-wrapper {
+  position: relative;
+  overflow: hidden;
+  transition: max-height 0.32s cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 0.24s ease;
+}
+
+.branched-menu-svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.branched-menu-line {
+  fill: none;
+  stroke: var(--bm-line, var(--border-color));
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: stroke 0.2s ease, stroke-dashoffset 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.branched-menu-children {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Child item row */
+.branched-menu-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 32px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-sidebar, var(--text-primary));
+  cursor: pointer;
+  position: relative;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.branched-menu-child:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.branched-menu-child.active {
+  background: var(--accent-light, rgba(0, 122, 255, 0.12));
+  color: var(--bm-accent, var(--accent-color));
+  font-weight: 600;
+}
+
+.branched-menu-child-left {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  flex: 1;
+}
+
+.branched-menu-child-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: inherit;
+  flex-shrink: 0;
+}
+
+.branched-menu-child-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.branched-menu-child-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: var(--bg-inset);
+  color: var(--text-muted);
+}
+
+.branched-menu-child.active .branched-menu-child-badge {
+  background: var(--bm-accent, var(--accent-color));
+  color: #ffffff;
+}
+
+.branched-menu-active-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background-color: var(--bm-accent, var(--accent-color));
+  flex-shrink: 0;
+}

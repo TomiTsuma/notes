@@ -175,7 +175,7 @@ export interface AppState {
   isRecording: boolean;
   showRightPanel: boolean;
 
-  activeView: 'home' | 'projects' | 'kanban' | 'calendar' | 'canvas';
+  activeView: 'home' | 'projects' | 'kanban' | 'calendar' | 'canvas' | 'nextcloud';
   selectedProjectId: string | null;
   currentBackground: string;
   theme: 'light' | 'dark';
@@ -230,14 +230,14 @@ export interface AppState {
   updateTextElementPosition: (docId: string, textId: string, x: number, y: number) => void;
   clearAnnotations: (docId: string) => void;
 
-  addNotebook: (name: string, projectId: string | null) => string;
+  addNotebook: (name: string, projectId?: string | null, folderId?: string | null, remotePath?: string) => string;
   addNotebookPage: (notebookId: string) => void;
   deleteNotebookPage: (notebookId: string, pageId: string) => void;
 
   setSmartNoteStatus: (docId: string, section: string, status: 'idle' | 'loading' | 'done' | 'error', content?: string) => void;
 
   // New Productivity Actions
-  setActiveView: (view: 'home' | 'projects' | 'kanban' | 'calendar' | 'canvas') => void;
+  setActiveView: (view: 'home' | 'projects' | 'kanban' | 'calendar' | 'canvas' | 'nextcloud') => void;
   setSelectedProjectId: (id: string | null) => void;
   addProject: (project: Project) => void;
   deleteProject: (id: string) => void;
@@ -332,7 +332,7 @@ export const useAppStore = create<AppState>()((set) => ({
       nextcloudConnected: false,
       nextcloudStatus: 'idle',
       nextcloudError: null,
-      nextcloudPapersPath: '/Papers',
+      nextcloudPapersPath: '/',
       nextcloudSyncPath: '/Chlio',
 
       activeView: 'home',
@@ -532,15 +532,16 @@ export const useAppStore = create<AppState>()((set) => ({
         };
       }),
 
-      addNotebook: (name, projectId) => {
+      addNotebook: (name, projectId, folderId, remotePath) => {
         const notebookId = `notebook-${Date.now()}`;
         const pageIds = Array.from({ length: 3 }, (_, i) => `${notebookId}-pg-${i + 1}`);
         const notebookFile: NoteFile = {
           id: notebookId,
           name: name.endsWith('.notebook') ? name : `${name}.notebook`,
           type: 'notebook',
-          folderId: null,
-          projectId,
+          folderId: folderId || null,
+          projectId: projectId || null,
+          remotePath: remotePath || undefined,
           notebookPageIds: pageIds,
           notebookMeta: {
             pageWidth: 800,

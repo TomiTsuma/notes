@@ -279,44 +279,27 @@ Please let me know how you would like to proceed!`;
       />
 
       {/* Header Container */}
-      <div style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
-        <button onClick={toggleRightPanel} style={{ background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', color: 'var(--text-primary)' }}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border-subtle)' }}>
+        <button 
+          onClick={toggleRightPanel} 
+          style={{ background: 'transparent', border: 'none', cursor: 'pointer', width: '28px', height: '28px', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-primary)' }}
+          title="Close Inspector"
+          className="btn-animate"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
 
-        {/* Radio Toggle Segmented button row */}
-        <div style={{ display: 'flex', background: 'rgba(0,0,0,0.04)', padding: '3px', borderRadius: '10px' }}>
+        {/* Apple Segmented Control */}
+        <div className="apple-segmented-control">
           <button 
             onClick={() => setPanelMode('summary')}
-            style={{
-              border: 'none',
-              padding: '6px 12px',
-              fontSize: '11px',
-              fontWeight: 800,
-              borderRadius: '8px',
-              cursor: 'pointer',
-              color: panelMode === 'summary' ? '#1c1c1e' : '#8e8e93',
-              background: panelMode === 'summary' ? '#ffffff' : 'transparent',
-              boxShadow: panelMode === 'summary' ? '0 2px 6px rgba(0,0,0,0.05)' : 'none',
-              transition: 'all 0.2s'
-            }}
+            className={`apple-segmented-item ${panelMode === 'summary' ? 'active' : ''}`}
           >
             Summary
           </button>
           <button 
             onClick={() => setPanelMode('chat')}
-            style={{
-              border: 'none',
-              padding: '6px 12px',
-              fontSize: '11px',
-              fontWeight: 800,
-              borderRadius: '8px',
-              cursor: 'pointer',
-              color: panelMode === 'chat' ? '#1c1c1e' : '#8e8e93',
-              background: panelMode === 'chat' ? '#ffffff' : 'transparent',
-              boxShadow: panelMode === 'chat' ? '0 2px 6px rgba(0,0,0,0.05)' : 'none',
-              transition: 'all 0.2s'
-            }}
+            className={`apple-segmented-item ${panelMode === 'chat' ? 'active' : ''}`}
           >
             AI Chat
           </button>
@@ -438,14 +421,23 @@ Please let me know how you would like to proceed!`;
           </div>
 
           {/* Chat bubbles list */}
-          <div style={{ flex: 1, overflowY: 'auto', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
             
             {/* Assistant Welcome message */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignSelf: 'flex-start', maxWidth: '85%' }}>
-              <div style={{ backgroundColor: '#ffffff', border: '1px solid rgba(0,0,0,0.04)', borderRadius: '14px 14px 14px 4px', padding: '12px 14px', fontSize: '13px', color: 'var(--text-primary)', lineHeight: 1.5, boxShadow: '0 2px 8px rgba(0,0,0,0.01)' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignSelf: 'flex-start', maxWidth: '88%' }}>
+              <div style={{ 
+                backgroundColor: 'var(--chat-bubble-ai-bg)', 
+                border: '1px solid var(--chat-bubble-ai-border)', 
+                borderRadius: '14px 14px 14px 4px', 
+                padding: '12px 14px', 
+                fontSize: '13px', 
+                color: 'var(--chat-bubble-ai-text)', 
+                lineHeight: 1.47, 
+                boxShadow: '0 1px 3px var(--shadow-sm)' 
+              }}>
                 Hi TomiTsuma! I'm your Clio AI Workspace Assistant. I read active document context natively. Let me know if you want me to explain GVT architectures, draft a plan, or schedule items!
               </div>
-              <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 700, marginLeft: '4px' }}>AI Assistant</span>
+              <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600, marginLeft: '4px' }}>Clio AI Assistant</span>
             </div>
 
             {/* Bubble items */}
@@ -457,25 +449,25 @@ Please let me know how you would like to proceed!`;
                   style={{ 
                     display: 'flex', 
                     flexDirection: 'column', 
-                    gap: '6px', 
+                    gap: '4px', 
                     alignSelf: isUser ? 'flex-end' : 'flex-start', 
-                    maxWidth: '85%' 
+                    maxWidth: '88%' 
                   }}
                 >
                   <div style={{ 
-                    backgroundColor: isUser ? '#0a7aff' : '#ffffff', 
-                    color: isUser ? '#ffffff' : '#1c1c1e',
-                    border: isUser ? 'none' : '1px solid rgba(0,0,0,0.04)', 
+                    backgroundColor: isUser ? 'var(--chat-bubble-user-bg)' : 'var(--chat-bubble-ai-bg)', 
+                    color: isUser ? 'var(--chat-bubble-user-text)' : 'var(--chat-bubble-ai-text)',
+                    border: isUser ? 'none' : '1px solid var(--chat-bubble-ai-border)', 
                     borderRadius: isUser ? '14px 14px 4px 14px' : '14px 14px 14px 4px', 
                     padding: '12px 14px', 
                     fontSize: '13px', 
-                    lineHeight: 1.5,
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.01)',
+                    lineHeight: 1.47,
+                    boxShadow: '0 1px 3px var(--shadow-sm)',
                     wordBreak: 'break-word'
                   }}>
                     {isUser ? msg.content : <ReactMarkdown>{msg.content}</ReactMarkdown>}
                   </div>
-                  <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 700, alignSelf: isUser ? 'flex-end' : 'flex-start', marginRight: isUser ? '4px' : 0, marginLeft: isUser ? 0 : '4px' }}>
+                  <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 500, alignSelf: isUser ? 'flex-end' : 'flex-start', marginRight: isUser ? '4px' : 0, marginLeft: isUser ? 0 : '4px' }}>
                     {isUser ? 'You' : 'Clio AI'} • {msg.timestamp}
                   </span>
                 </div>
@@ -484,13 +476,22 @@ Please let me know how you would like to proceed!`;
 
             {/* Live Streaming Assistant bubble */}
             {isGeneratingChat && chatStreamText && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignSelf: 'flex-start', maxWidth: '85%' }}>
-                <div style={{ backgroundColor: '#ffffff', border: '1px solid rgba(0,0,0,0.04)', borderRadius: '14px 14px 14px 4px', padding: '12px 14px', fontSize: '13px', color: 'var(--text-primary)', lineHeight: 1.5, boxShadow: '0 2px 8px rgba(0,0,0,0.01)' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignSelf: 'flex-start', maxWidth: '88%' }}>
+                <div style={{ 
+                  backgroundColor: 'var(--chat-bubble-ai-bg)', 
+                  border: '1px solid var(--chat-bubble-ai-border)', 
+                  borderRadius: '14px 14px 14px 4px', 
+                  padding: '12px 14px', 
+                  fontSize: '13px', 
+                  color: 'var(--chat-bubble-ai-text)', 
+                  lineHeight: 1.47, 
+                  boxShadow: '0 1px 3px var(--shadow-sm)' 
+                }}>
                   <ReactMarkdown>{chatStreamText}</ReactMarkdown>
                 </div>
-                <span style={{ fontSize: '10px', color: '#0a7aff', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '4px' }}>
-                  <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#0a7aff', animation: 'pulse 1s infinite' }} />
-                  Streaming reply...
+                <span style={{ fontSize: '11px', color: 'var(--accent-color)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '4px' }}>
+                  <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: 'var(--accent-color)', animation: 'pulse 1s infinite' }} />
+                  Generating...
                 </span>
               </div>
             )}
@@ -502,11 +503,11 @@ Please let me know how you would like to proceed!`;
           <form 
             onSubmit={handleSendChat}
             style={{ 
-              padding: '16px', 
-              borderTop: '1px solid rgba(0,0,0,0.05)', 
-              backgroundColor: 'rgba(255,255,255,0.4)', 
+              padding: '12px 16px', 
+              borderTop: '1px solid var(--border-subtle)', 
+              backgroundColor: 'var(--bg-toolbar)', 
               display: 'flex', 
-              gap: '10px', 
+              gap: '8px', 
               alignItems: 'center' 
             }}
           >
@@ -517,35 +518,33 @@ Please let me know how you would like to proceed!`;
               disabled={isGeneratingChat}
               style={{
                 flex: 1,
-                padding: '12px',
-                borderRadius: '12px',
+                padding: '9px 12px',
+                borderRadius: '8px',
                 border: '1px solid var(--border-color)',
                 fontSize: '13px',
-                background: 'var(--btn-secondary-bg)',
-                outline: 'none'
+                backgroundColor: 'var(--bg-input)',
+                color: 'var(--text-primary)',
+                outline: 'none',
               }}
             />
             <button
               type="submit"
-              disabled={!chatInput.trim() || isGeneratingChat}
+              disabled={isGeneratingChat || !chatInput.trim()}
               style={{
-                backgroundColor: (!chatInput.trim() || isGeneratingChat) ? 'rgba(0,0,0,0.04)' : '#0a7aff',
-                color: (!chatInput.trim() || isGeneratingChat) ? '#8e8e93' : 'white',
+                background: 'var(--accent-color)',
+                color: 'white',
                 border: 'none',
-                borderRadius: '12px',
-                width: '40px',
-                height: '40px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: (!chatInput.trim() || isGeneratingChat) ? 'not-allowed' : 'pointer'
+                borderRadius: '8px',
+                padding: '9px 14px',
+                fontSize: '13px',
+                fontWeight: 600,
+                cursor: (isGeneratingChat || !chatInput.trim()) ? 'not-allowed' : 'pointer',
+                opacity: (isGeneratingChat || !chatInput.trim()) ? 0.5 : 1,
               }}
-              className="btn-animate"
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+              Send
             </button>
           </form>
-
         </div>
       )}
 

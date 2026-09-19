@@ -15,8 +15,35 @@
 .radial-fab-backdrop {
   position: fixed;
   inset: 0;
-  background: transparent;
+  background: rgba(0, 0, 0, 0.15);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
   z-index: 199;
+}
+
+/* Liquid Glass backdrop capsule for radial tools (materials.md) */
+.radial-fab-scrim {
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  transform: translateX(-50%) scale(0.75);
+  width: 320px;
+  height: 180px;
+  border-radius: 160px 160px 24px 24px;
+  background: var(--glass-bg);
+  backdrop-filter: blur(28px) saturate(160%);
+  -webkit-backdrop-filter: blur(28px) saturate(160%);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 8px 32px var(--shadow-md);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.22s cubic-bezier(0.16, 1, 0.3, 1), transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 200;
+}
+
+.radial-fab-scrim.visible {
+  opacity: 1;
+  transform: translateX(-50%) scale(1);
 }
 
 .radial-fab-main {

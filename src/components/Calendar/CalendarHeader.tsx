@@ -28,16 +28,36 @@ const CalendarHeader: React.FC<Props> = ({ viewMode, selectedDate, onViewModeCha
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 900, letterSpacing: '-0.5px' }}>{title}</h1>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div className="calendar-view-toggle">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div className="apple-segmented-control">
             {(['day', 'week', 'month'] as CalendarViewMode[]).map(mode => (
-              <button key={mode} className={viewMode === mode ? 'active' : ''} onClick={() => onViewModeChange(mode)}>
+              <button 
+                key={mode} 
+                className={`apple-segmented-item ${viewMode === mode ? 'active' : ''}`} 
+                onClick={() => onViewModeChange(mode)}
+              >
                 {mode.charAt(0).toUpperCase() + mode.slice(1)}
               </button>
             ))}
           </div>
-          <button onClick={onPrev} style={{ border: 'none', background: 'transparent', fontSize: 18, cursor: 'pointer', color: '#0a7aff', fontWeight: 800 }}>◀</button>
-          <button onClick={onNext} style={{ border: 'none', background: 'transparent', fontSize: 18, cursor: 'pointer', color: '#0a7aff', fontWeight: 800 }}>▶</button>
+          <button 
+            onClick={onPrev} 
+            style={{ border: 'none', background: 'var(--bg-inset)', width: 28, height: 28, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--accent-color)', fontWeight: 700 }}
+            title="Previous"
+            aria-label="Previous period"
+            className="btn-animate"
+          >
+            ‹
+          </button>
+          <button 
+            onClick={onNext} 
+            style={{ border: 'none', background: 'var(--bg-inset)', width: 28, height: 28, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--accent-color)', fontWeight: 700 }}
+            title="Next"
+            aria-label="Next period"
+            className="btn-animate"
+          >
+            ›
+          </button>
         </div>
       </div>
 

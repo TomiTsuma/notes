@@ -65,7 +65,7 @@ const KanbanColumn: React.FC<{
       {tasks.map(task => (
         <TaskCard key={task.id} task={task} onClick={() => onTaskClick(task)} isDragging={activeId === task.id} />
       ))}
-      <button className="kanban-add-btn" onClick={onAdd}>+ New Page</button>
+      <button className="kanban-add-btn" onClick={onAdd}>+ New Task</button>
     </div>
   );
 };
@@ -174,24 +174,54 @@ const KanbanBoard: React.FC = () => {
       {showAddCol && (
         <div className="event-modal-overlay" onClick={() => setShowAddCol(null)}>
           <form className="event-modal-form glass-card" onClick={e => e.stopPropagation()} onSubmit={e => handleAddTask(e, showAddCol)}>
-            <h3 style={{ fontSize: 18, fontWeight: 900 }}>New Task</h3>
-            <input value={taskTitle} onChange={e => setTaskTitle(e.target.value)} placeholder="Task title" required
-              style={{ padding: 10, borderRadius: 8, border: '1px solid rgba(0,0,0,0.1)' }} />
-            <textarea value={taskDesc} onChange={e => setTaskDesc(e.target.value)} placeholder="Description" rows={3}
-              style={{ padding: 10, borderRadius: 8, border: '1px solid rgba(0,0,0,0.1)', fontFamily: 'inherit' }} />
+            <h3 style={{ fontSize: 17, fontWeight: 700, color: 'var(--text-primary)' }}>New Task</h3>
+            <input 
+              value={taskTitle} 
+              onChange={e => setTaskTitle(e.target.value)} 
+              placeholder="Task title" 
+              required
+              style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-input)', color: 'var(--text-primary)' }} 
+            />
+            <textarea 
+              value={taskDesc} 
+              onChange={e => setTaskDesc(e.target.value)} 
+              placeholder="Description (optional)" 
+              rows={3}
+              style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontFamily: 'inherit' }} 
+            />
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <select value={taskPriority} onChange={e => setTaskPriority(e.target.value as KanbanTask['priority'])}
-                style={{ padding: 10, borderRadius: 8, border: '1px solid rgba(0,0,0,0.1)' }}>
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
+              <select 
+                value={taskPriority} 
+                onChange={e => setTaskPriority(e.target.value as KanbanTask['priority'])}
+                style={{ padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-input)', color: 'var(--text-primary)' }}
+              >
+                <option value="low">Low Priority</option>
+                <option value="medium">Medium Priority</option>
+                <option value="high">High Priority</option>
               </select>
-              <input type="date" value={taskDueDate} onChange={e => setTaskDueDate(e.target.value)}
-                style={{ padding: 10, borderRadius: 8, border: '1px solid rgba(0,0,0,0.1)' }} />
+              <input 
+                type="date" 
+                value={taskDueDate} 
+                onChange={e => setTaskDueDate(e.target.value)}
+                style={{ padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-input)', color: 'var(--text-primary)' }} 
+              />
             </div>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button type="button" onClick={() => setShowAddCol(null)} style={{ flex: 1, padding: 10, borderRadius: 8, border: 'none', background: '#f0f0f5', cursor: 'pointer' }}>Cancel</button>
-              <button type="submit" style={{ flex: 2, padding: 10, borderRadius: 8, border: 'none', background: '#1c1c1e', color: 'white', fontWeight: 800, cursor: 'pointer' }}>Add Task</button>
+            <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+              <button 
+                type="button" 
+                onClick={() => setShowAddCol(null)} 
+                style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--btn-secondary-bg)', color: 'var(--btn-secondary-text)', cursor: 'pointer', fontWeight: 600, fontSize: 13 }}
+                className="btn-animate"
+              >
+                Cancel
+              </button>
+              <button 
+                type="submit" 
+                style={{ flex: 2, padding: '10px 14px', borderRadius: 8, border: 'none', background: 'var(--accent-color)', color: 'white', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}
+                className="btn-animate"
+              >
+                Add Task
+              </button>
             </div>
           </form>
         </div>

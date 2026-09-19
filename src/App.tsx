@@ -12,6 +12,7 @@ import HomeDashboard from './components/Dashboard/HomeDashboard';
 import ProjectsSection from './components/Projects/ProjectsSection';
 import KanbanBoard from './components/Kanban/KanbanBoard';
 import CalendarView from './components/Calendar/CalendarView';
+import NextcloudLibrary from './components/Nextcloud/NextcloudLibrary';
 import ToolPalette from './components/UI/ToolPalette';
 import ThemeToggle from './components/UI/ThemeToggle';
 
@@ -71,10 +72,11 @@ function App() {
 
   const renderView = (view: typeof activeView) => {
     switch (view) {
-      case 'home':     return <HomeDashboard />;
-      case 'projects': return <ProjectsSection />;
-      case 'kanban':   return <KanbanBoard />;
-      case 'calendar': return <CalendarView />;
+      case 'home':      return <HomeDashboard />;
+      case 'projects':  return <ProjectsSection />;
+      case 'kanban':    return <KanbanBoard />;
+      case 'calendar':  return <CalendarView />;
+      case 'nextcloud': return <NextcloudLibrary />;
       case 'canvas':
       default:
         return (

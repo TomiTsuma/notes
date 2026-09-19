@@ -60,13 +60,13 @@ const HomeDashboard: React.FC = () => {
       {/* Top Banner Row */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
-          <div style={{ fontSize: '14px', fontWeight: 800, color: '#0a7aff', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '4px' }}>
+          <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--accent-color)', letterSpacing: '0.4px', textTransform: 'uppercase', marginBottom: '2px' }}>
             {getGreetingDate()}
           </div>
-          <h1 style={{ fontSize: '32px', fontWeight: 900, color: 'var(--text-primary)', letterSpacing: '-1px' }}>
+          <h1 style={{ fontSize: '26px', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.4px' }}>
             Welcome back, TomiTsuma! 👋
           </h1>
-          <p style={{ fontSize: '15px', color: 'var(--text-muted)', marginTop: '2px', fontWeight: 500 }}>
+          <p style={{ fontSize: '14px', color: 'var(--text-muted)', marginTop: '2px', fontWeight: 400 }}>
             Here is your productivity outline for today. All systems are online.
           </p>
         </div>
@@ -74,22 +74,22 @@ const HomeDashboard: React.FC = () => {
         <button 
           onClick={() => setShowAddProjModal(true)}
           style={{
-            background: '#0a7aff',
+            background: 'var(--accent-color)',
             color: 'white',
             border: 'none',
-            borderRadius: '10px',
-            padding: '12px 20px',
-            fontSize: '14px',
-            fontWeight: 700,
+            borderRadius: '8px',
+            padding: '10px 16px',
+            fontSize: '13px',
+            fontWeight: 600,
             display: 'flex',
             alignItems: 'center',
             gap: '8px',
             cursor: 'pointer',
-            boxShadow: '0 1px 3px rgba(10, 122, 255, 0.2)'
+            boxShadow: '0 2px 6px rgba(0, 122, 255, 0.25)'
           }}
           className="btn-animate"
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           Create Project
         </button>
       </div>

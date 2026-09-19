@@ -15,6 +15,7 @@ import {
   CloudIcon, TagIcon, FolderIcon, UploadIcon,
   WallpaperIcon, PlusIcon, ChevronRightIcon, NotebookIcon, FileIcon,
 } from '../UI/Icons';
+import BranchedMenu, { type BranchedMenuItem } from '../UI/BranchedMenu';
 
 const Sidebar: React.FC = () => {
   const { 
@@ -416,37 +417,6 @@ const Sidebar: React.FC = () => {
     );
   };
 
-  // Nav Item Renderer
-  const renderNavItem = (view: typeof activeView, label: string, icon: React.ReactNode) => {
-    const isActive = activeView === view;
-    return (
-      <div
-        className="btn-animate sidebar-nav-item"
-        onClick={() => {
-          setActiveView(view);
-          if (view === 'canvas' && files.length > 0 && !activeDocumentId) {
-            setActiveDocument(files[0].id);
-          }
-        }}
-        style={{
-          display: 'flex', alignItems: 'center', gap: '12px',
-          padding: '10px 16px', borderRadius: '12px',
-          fontSize: '14px', fontWeight: isActive ? 800 : 600,
-          color: isActive ? 'var(--accent-color)' : 'var(--text-muted)',
-          backgroundColor: isActive ? 'var(--accent-light)' : 'transparent',
-          cursor: 'pointer', marginBottom: '4px',
-          transition: 'all 0.22s cubic-bezier(0.16, 1, 0.3, 1)',
-        }}
-      >
-        {icon}
-        <span style={{ flex: 1 }}>{label}</span>
-        {isActive && (
-          <div style={{ width: '5px', height: '5px', borderRadius: '50%', backgroundColor: 'var(--accent-color)', flexShrink: 0 }} />
-        )}
-      </div>
-    );
-  };
-
   const handleAddNewProject = () => {
     const name = prompt("Enter project name:");
     if (!name) return;
@@ -501,6 +471,84 @@ const Sidebar: React.FC = () => {
     return () => clearInterval(interval);
   }, [nextcloudConnected, pendingUploads]);
 
+  const branchedMenuItems: BranchedMenuItem[] = [
+    {
+      id: 'workspaces',
+      label: 'Workspaces',
+      icon: <HomeIcon width={13} height={13} />,
+      children: [
+        {
+          value: 'home',
+          label: 'Dashboard',
+          icon: <HomeIcon width={14} height={14} />,
+          onClick: () => setActiveView('home'),
+        },
+        {
+          value: 'projects',
+          label: 'Project Hub',
+          icon: <ProjectsIcon width={14} height={14} />,
+          badge: projects.length,
+          onClick: () => {
+            setSelectedProjectId(null);
+            setActiveView('projects');
+          },
+        },
+        {
+          value: 'nextcloud',
+          label: 'Nextcloud Library',
+          icon: <CloudIcon width={14} height={14} />,
+          onClick: () => setActiveView('nextcloud'),
+        },
+        {
+          value: 'kanban',
+          label: 'Kanban Board',
+          icon: <KanbanIcon width={14} height={14} />,
+          onClick: () => setActiveView('kanban'),
+        },
+        {
+          value: 'calendar',
+          label: 'Calendar Planner',
+          icon: <CalendarIcon width={14} height={14} />,
+          onClick: () => setActiveView('calendar'),
+        },
+        ...((files.length > 0 || activeDocumentId) ? [{
+          value: 'canvas',
+          label: 'Note Canvas',
+          icon: <CanvasIcon width={14} height={14} />,
+          onClick: () => {
+            setActiveView('canvas');
+            if (files.length > 0 && !activeDocumentId) {
+              setActiveDocument(files[0].id);
+            }
+          },
+        }] : []),
+      ],
+    },
+    {
+      id: 'projects-group',
+      label: 'Projects',
+      action: {
+        icon: <PlusIcon width={13} height={13} />,
+        title: 'Create Project',
+        onClick: handleAddNewProject,
+      },
+      children: projects.map(proj => ({
+        value: `project-${proj.id}`,
+        label: proj.name,
+        color: proj.color,
+        badge: files.filter(f => f.projectId === proj.id).length,
+        onClick: () => {
+          setSelectedProjectId(proj.id);
+          setActiveView('projects');
+        },
+      })),
+    },
+  ];
+
+  const activeMenuValue = (activeView === 'projects' && selectedProjectId)
+    ? `project-${selectedProjectId}`
+    : activeView;
+
   return (
     <div 
       className="sidebar-panel glass-card" 
@@ -512,10 +560,10 @@ const Sidebar: React.FC = () => {
         display: 'flex', 
         flexDirection: 'column', 
         height: '100%', 
-        fontFamily: 'Nunito, sans-serif',
         borderRadius: 0,
         boxShadow: 'none',
         color: 'var(--text-primary)',
+        userSelect: 'none',
       }}
     >
       {/* Invisible inputs */}
@@ -523,70 +571,32 @@ const Sidebar: React.FC = () => {
       <input type="file" ref={folderInputRef} onChange={handleFolderUpload} multiple accept=".pdf,.txt,.md,.docx" style={{ display: 'none' }} {...({ webkitdirectory: '' } as any)} />
       
       {/* Header Branding */}
-      <div style={{ padding: '20px 20px 12px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 900, fontSize: '20px', letterSpacing: '-0.5px', color: 'var(--text-primary)' }}>
-            <img src={logo} alt="Logo" style={{ width: '24px', height: '24px' }} />
-            Chlio
-            <span style={{ fontSize: '10px', backgroundColor: 'rgba(10, 122, 255, 0.1)', padding: '2px 6px', borderRadius: '6px', fontWeight: 800, color: '#0a7aff' }}>OS</span>
+      <div style={{ padding: '16px 16px 10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 700, fontSize: '18px', letterSpacing: '-0.3px', color: 'var(--text-primary)' }}>
+            <img src={logo} alt="Logo" style={{ width: '22px', height: '22px', borderRadius: '5px' }} />
+            Clio
+            <span style={{ fontSize: '10px', backgroundColor: 'var(--accent-light)', padding: '2px 5px', borderRadius: '4px', fontWeight: 600, color: 'var(--accent-color)' }}>OS</span>
           </div>
         </div>
       </div>
       
-      {/* Main Suite Navigation */}
-      <div style={{ padding: '0 12px 16px', borderBottom: '1px solid var(--border-subtle)' }}>
-        {renderNavItem('home',     'Dashboard',       <HomeIcon />)}
-        {renderNavItem('projects', 'Project Hub',     <ProjectsIcon />)}
-        {renderNavItem('kanban',   'Kanban Board',    <KanbanIcon />)}
-        {renderNavItem('calendar', 'Calendar Planner',<CalendarIcon />)}
-        {(files.length > 0 || activeDocumentId) && renderNavItem('canvas', 'Note Canvas', <CanvasIcon />)}
-      </div>
-
-      {/* Sidebar Content Scroll Area */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 12px' }}>
-        
-        {/* Projects Section */}
-        <div style={{ marginBottom: '24px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', padding: '0 8px' }}>
-            <span style={{ fontWeight: 800, fontSize: '11px', color: 'var(--text-secondary)', letterSpacing: '0.5px' }}>PROJECTS</span>
-            <button onClick={handleAddNewProject} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#0a7aff', fontWeight: 800, fontSize: '14px' }} title="Create Project">+</button>
-          </div>
-          {projects.map(proj => {
-            const isSelected = selectedProjectId === proj.id && activeView === 'projects';
-            return (
-              <div 
-                key={proj.id}
-                onClick={() => {
-                  setSelectedProjectId(proj.id);
-                  setActiveView('projects');
-                }}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  padding: '8px 12px',
-                  borderRadius: '10px',
-                  cursor: 'pointer',
-                  fontSize: '13px',
-                  fontWeight: 600,
-                  color: isSelected ? proj.color : 'var(--text-primary)',
-                  backgroundColor: isSelected ? `rgba(${parseInt(proj.color.slice(1,3),16) || 10}, ${parseInt(proj.color.slice(3,5),16) || 122}, ${parseInt(proj.color.slice(5,7),16) || 255}, 0.08)` : 'transparent',
-                  marginBottom: '2px',
-                  transition: 'all 0.2s'
-                }}
-                className="btn-animate"
-              >
-                <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: proj.color }} />
-                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{proj.name}</span>
-                <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 700 }}>
-                  {files.filter(f => f.projectId === proj.id).length}
-                </span>
-              </div>
-            );
-          })}
-          {projects.length === 0 && (
-            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', fontStyle: 'italic', padding: '8px' }}>No active projects. Click + to create.</div>
-          )}
+      {/* Sidebar Content Scroll Area with Branched Menu */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '6px 8px 16px' }}>
+        <div style={{ marginBottom: '14px' }}>
+          <BranchedMenu
+            items={branchedMenuItems}
+            activeValue={activeMenuValue}
+            defaultOpen={[0, 1]}
+            onSelect={(val) => {
+              if (['home', 'projects', 'nextcloud', 'kanban', 'calendar', 'canvas'].includes(val)) {
+                setActiveView(val as any);
+                if (val === 'canvas' && files.length > 0 && !activeDocumentId) {
+                  setActiveDocument(files[0].id);
+                }
+              }
+            }}
+          />
         </div>
 
         {/* Nextcloud Config Collapsible Section */}

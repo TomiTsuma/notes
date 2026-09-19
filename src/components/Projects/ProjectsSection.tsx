@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../../store/appStore';
 import { v4 as uuidv4 } from 'uuid';
+import FolderFloat, { type FolderFloatItem } from '../UI/FolderFloat';
 
 const ProjectsSection: React.FC = () => {
   const { 
@@ -11,12 +12,19 @@ const ProjectsSection: React.FC = () => {
     setSelectedProjectId, 
     deleteProject, 
     updateProject,
+    addProject,
     addFile,
     addNotebook,
     setActiveDocument,
     setActiveView,
     associateFileToProject
   } = useAppStore();
+
+  const [viewMode, setViewMode] = useState<'grid' | 'detail'>('grid');
+  const [showNewProjModal, setShowNewProjModal] = useState(false);
+  const [newProjNameInput, setNewProjNameInput] = useState('');
+  const [newProjDescInput, setNewProjDescInput] = useState('');
+  const [newProjColorInput, setNewProjColorInput] = useState('#007aff');
 
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState('');
@@ -98,20 +106,147 @@ const ProjectsSection: React.FC = () => {
   const colors = ['#0a7aff', '#34c759', '#af52de', '#ff9500', '#ff2d55', '#5856d6', '#00c48c'];
 
   return (
-    <div className="workspace-view-container" style={{ display: 'flex', flexDirection: 'row', gap: '24px', padding: '32px' }}>
-      
-      {/* Left panel: projects list */}
-      <div 
-        className="glass-card" 
-        style={{ 
-          width: '280px', 
-          display: 'flex', 
-          flexDirection: 'column', 
-          padding: '20px', 
-          gap: '16px',
-          flexShrink: 0
-        }}
-      >
+    <div className="workspace-view-container" style={{ gap: '24px', maxWidth: '1240px', margin: '0 auto', width: '100%' }}>
+      {/* Top Header Row */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--accent-color)', letterSpacing: '0.4px', textTransform: 'uppercase', marginBottom: '2px' }}>
+            WORKSPACE REPOSITORY
+          </div>
+          <h1 style={{ fontSize: '26px', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.4px' }}>
+            Projects & Folders
+          </h1>
+          <p style={{ fontSize: '14px', color: 'var(--text-muted)', marginTop: '2px', fontWeight: 400 }}>
+            Hover over any project folder to preview floating notes and papers inside it.
+          </p>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div className="apple-segmented-control">
+            <button
+              className={`apple-segmented-item ${viewMode === 'grid' ? 'active' : ''}`}
+              onClick={() => setViewMode('grid')}
+            >
+              📁 Folder Grid
+            </button>
+            <button
+              className={`apple-segmented-item ${viewMode === 'detail' ? 'active' : ''}`}
+              onClick={() => setViewMode('detail')}
+            >
+              📋 Project Detail
+            </button>
+          </div>
+
+          <button
+            onClick={() => setShowNewProjModal(true)}
+            style={{
+              background: 'var(--accent-color)',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              padding: '8px 14px',
+              fontSize: '13px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6
+            }}
+            className="btn-animate"
+          >
+            + New Project
+          </button>
+        </div>
+      </div>
+
+      {viewMode === 'grid' ? (
+        /* Folder Float 3D Grid View */
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+            gap: '36px 24px',
+            paddingBottom: '40px',
+          }}
+        >
+          {projects.map(proj => {
+            const projFiles = files.filter(f => f.projectId === proj.id);
+            const items: FolderFloatItem[] = projFiles.map(f => ({
+              id: f.id,
+              title: f.name,
+              type: f.type,
+              subtitle: f.tags?.join(', ') || 'Note',
+              onClick: () => {
+                setActiveDocument(f.id);
+                setActiveView('canvas');
+              }
+            }));
+
+            return (
+              <FolderFloat
+                key={proj.id}
+                id={proj.id}
+                label={proj.name}
+                sublabel={proj.description || `${projFiles.length} ${projFiles.length === 1 ? 'note' : 'notes'}`}
+                color={proj.color}
+                items={items}
+                onOpenFolder={() => {
+                  setSelectedProjectId(proj.id);
+                  setViewMode('detail');
+                }}
+                onSelectItem={(item) => {
+                  setActiveDocument(item.id);
+                  setActiveView('canvas');
+                }}
+              />
+            );
+          })}
+
+          {inboxNotes.length > 0 && (
+            <FolderFloat
+              id="inbox-folder"
+              label="Inbox / Unfiled"
+              sublabel={`${inboxNotes.length} unassigned notes`}
+              color="#86868b"
+              items={inboxNotes.map(f => ({
+                id: f.id,
+                title: f.name,
+                type: f.type,
+                subtitle: 'Unfiled',
+                onClick: () => {
+                  setActiveDocument(f.id);
+                  setActiveView('canvas');
+                }
+              }))}
+              onSelectItem={(item) => {
+                setActiveDocument(item.id);
+                setActiveView('canvas');
+              }}
+            />
+          )}
+
+          {projects.length === 0 && inboxNotes.length === 0 && (
+            <div className="glass-card" style={{ gridColumn: '1/-1', padding: 48, textAlign: 'center', color: 'var(--text-muted)' }}>
+              <p style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)' }}>No projects or notes yet</p>
+              <p style={{ fontSize: 13, marginTop: 4 }}>Click '+ New Project' above to start organizing your research.</p>
+            </div>
+          )}
+        </div>
+      ) : (
+        /* Focused Detail Split View */
+        <div style={{ display: 'flex', flexDirection: 'row', gap: '24px', flex: 1, minHeight: 0 }}>
+          {/* Left panel: projects list */}
+          <div 
+            className="glass-card" 
+            style={{ 
+              width: '280px', 
+              display: 'flex', 
+              flexDirection: 'column', 
+              padding: '20px', 
+              gap: '16px',
+              flexShrink: 0
+            }}
+          >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h3 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)' }}>Projects</h3>
           <button 
@@ -427,7 +562,83 @@ const ProjectsSection: React.FC = () => {
           No active projects found. Head to the Dashboard to create one!
         </div>
       )}
+    </div>
+  )}
 
+      {showNewProjModal && (
+        <div className="event-modal-overlay" onClick={() => setShowNewProjModal(false)}>
+          <form
+            className="event-modal-form glass-card"
+            onClick={e => e.stopPropagation()}
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!newProjNameInput.trim()) return;
+              addProject({
+                id: `proj-${uuidv4().substring(0, 8)}`,
+                name: newProjNameInput,
+                description: newProjDescInput,
+                color: newProjColorInput,
+                createdAt: new Date().toISOString()
+              });
+              setNewProjNameInput('');
+              setNewProjDescInput('');
+              setShowNewProjModal(false);
+            }}
+          >
+            <h3 style={{ fontSize: 17, fontWeight: 700, color: 'var(--text-primary)' }}>New Project</h3>
+            <input
+              placeholder="Project Name"
+              value={newProjNameInput}
+              onChange={e => setNewProjNameInput(e.target.value)}
+              required
+              style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 13 }}
+            />
+            <textarea
+              placeholder="Description (optional)"
+              value={newProjDescInput}
+              onChange={e => setNewProjDescInput(e.target.value)}
+              rows={2}
+              style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 13, fontFamily: 'inherit' }}
+            />
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>Folder Color:</span>
+              {colors.map(c => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setNewProjColorInput(c)}
+                  style={{
+                    width: 24,
+                    height: 24,
+                    borderRadius: '50%',
+                    backgroundColor: c,
+                    border: newProjColorInput === c ? '2.5px solid white' : 'none',
+                    boxShadow: newProjColorInput === c ? '0 0 0 2px var(--accent-color)' : 'none',
+                    cursor: 'pointer'
+                  }}
+                />
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 10, marginTop: 6 }}>
+              <button
+                type="button"
+                onClick={() => setShowNewProjModal(false)}
+                style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--btn-secondary-bg)', color: 'var(--btn-secondary-text)', cursor: 'pointer', fontWeight: 600, fontSize: 13 }}
+                className="btn-animate"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                style={{ flex: 2, padding: '10px 14px', borderRadius: 8, border: 'none', background: 'var(--accent-color)', color: 'white', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}
+                className="btn-animate"
+              >
+                Create Project
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 };
