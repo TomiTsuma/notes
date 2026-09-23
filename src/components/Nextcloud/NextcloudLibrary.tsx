@@ -9,6 +9,7 @@ import {
   setPapersPath,
   createNextcloudDirectory,
   uploadFileToNextcloud,
+  fetchAndUploadArxivPaper,
   normalizeRemotePath,
   type NextcloudPaper,
   type NextcloudDirectory,
@@ -87,6 +88,11 @@ const NextcloudLibrary: React.FC = () => {
 
   const [showSubfolderModal, setShowSubfolderModal] = useState(false);
   const [subfolderName, setSubfolderName] = useState('');
+
+  const [showArxivModal, setShowArxivModal] = useState(false);
+  const [arxivInput, setArxivInput] = useState('');
+  const [isDownloadingArxiv, setIsDownloadingArxiv] = useState(false);
+  const [arxivError, setArxivError] = useState<string | null>(null);
 
   // Connection form state (for inline connecting if not connected)
   const [urlInput, setUrlInput] = useState(nextcloudUrl);
@@ -459,6 +465,52 @@ const NextcloudLibrary: React.FC = () => {
     setShowSubfolderModal(false);
   };
 
+  // Download arXiv paper into selected folder
+  const handleDownloadArxivPaper = async () => {
+    if (!selectedFolder || !arxivInput.trim()) return;
+    setIsDownloadingArxiv(true);
+    setArxivError(null);
+
+    try {
+      const result = await fetchAndUploadArxivPaper(arxivInput.trim(), selectedFolder.path);
+
+      const newPaper: NextcloudPaper = {
+        id: result.remotePath,
+        title: result.title,
+        authors: result.authors,
+        path: result.remotePath,
+        downloadUrl: '',
+      };
+
+      setSelectedFolder(prev => prev ? {
+        ...prev,
+        papers: [newPaper, ...prev.papers.filter(p => p.id !== newPaper.id)]
+      } : null);
+
+      setFolders(prev => prev.map(f => f.id === selectedFolder.id ? {
+        ...f,
+        papers: [newPaper, ...f.papers.filter(p => p.id !== newPaper.id)]
+      } : f));
+
+      addFile({
+        id: `arxiv-${Date.now()}`,
+        name: result.filename,
+        type: 'pdf',
+        dataUrl: result.dataUrl,
+        folderId: selectedFolder.id,
+        remotePath: result.remotePath,
+      });
+
+      setArxivInput('');
+      setShowArxivModal(false);
+    } catch (err: any) {
+      console.error('Failed to download arXiv paper:', err);
+      setArxivError(err.message || 'Failed to download paper from arXiv');
+    } finally {
+      setIsDownloadingArxiv(false);
+    }
+  };
+
   // Filtered files belonging to selected folder
   const folderFiles = selectedFolder
     ? files.filter(
@@ -502,6 +554,17 @@ const NextcloudLibrary: React.FC = () => {
 
             {/* Creation Action Pills */}
             <div className="nextcloud-actions-group">
+              <button
+                className="folder-action-pill arxiv btn-animate"
+                onClick={() => {
+                  setArxivError(null);
+                  setShowArxivModal(true);
+                }}
+              >
+                <FileIcon width={14} height={14} />
+                <span>+ arXiv Paper</span>
+              </button>
+
               <button
                 className="folder-action-pill sticky btn-animate"
                 onClick={() => setShowStickyModal(true)}
@@ -1546,6 +1609,123 @@ const NextcloudLibrary: React.FC = () => {
                 }}
               >
                 Create Folder
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 4: Import arXiv Paper */}
+      {showArxivModal && (
+        <div className="folder-modal-overlay" onClick={() => !isDownloadingArxiv && setShowArxivModal(false)}>
+          <div className="folder-modal-card" onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: 'var(--text-primary)' }}>
+                Import arXiv Paper
+              </h3>
+              <button
+                onClick={() => !isDownloadingArxiv && setShowArxivModal(false)}
+                disabled={isDownloadingArxiv}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  fontSize: 18,
+                  cursor: isDownloadingArxiv ? 'not-allowed' : 'pointer',
+                  color: 'var(--text-secondary)',
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {selectedFolder && (
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: -4 }}>
+                Target Folder: <strong style={{ color: 'var(--accent-color)' }}>{selectedFolder.name}</strong> ({selectedFolder.path})
+              </div>
+            )}
+
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>
+                arXiv ID or URL
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. 2303.08774, arxiv:2303.08774, or https://arxiv.org/abs/2303.08774"
+                value={arxivInput}
+                onChange={e => {
+                  setArxivInput(e.target.value);
+                  setArxivError(null);
+                }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && arxivInput.trim() && !isDownloadingArxiv) {
+                    handleDownloadArxivPaper();
+                  }
+                }}
+                disabled={isDownloadingArxiv}
+                style={{
+                  width: '100%',
+                  padding: '9px 12px',
+                  borderRadius: 8,
+                  border: '1px solid var(--border-color)',
+                  background: 'var(--bg-input)',
+                  color: 'var(--text-primary)',
+                  fontSize: 13,
+                }}
+              />
+            </div>
+
+            {arxivError && (
+              <div style={{
+                padding: '8px 12px',
+                borderRadius: 8,
+                background: 'rgba(239, 68, 68, 0.1)',
+                border: '1px solid rgba(239, 68, 68, 0.3)',
+                color: '#ef4444',
+                fontSize: 12,
+              }}>
+                {arxivError}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 8 }}>
+              <button
+                onClick={() => setShowArxivModal(false)}
+                disabled={isDownloadingArxiv}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: 8,
+                  border: '1px solid var(--border-color)',
+                  background: 'transparent',
+                  color: 'var(--text-primary)',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: isDownloadingArxiv ? 'not-allowed' : 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDownloadArxivPaper}
+                disabled={!arxivInput.trim() || isDownloadingArxiv}
+                style={{
+                  padding: '8px 18px',
+                  borderRadius: 8,
+                  border: 'none',
+                  background: '#ef4444',
+                  color: '#ffffff',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: (!arxivInput.trim() || isDownloadingArxiv) ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+              >
+                {isDownloadingArxiv ? (
+                  <span>Downloading...</span>
+                ) : (
+                  <span>Download & Save</span>
+                )}
               </button>
             </div>
           </div>

@@ -89,6 +89,17 @@
   transform: translateY(-1px);
 }
 
+.folder-action-pill.arxiv {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.folder-action-pill.arxiv:hover {
+  background: rgba(239, 68, 68, 0.22);
+  transform: translateY(-1px);
+}
+
 /* Folder Banner Card */
 .folder-header-banner {
   padding: 24px;

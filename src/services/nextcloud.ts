@@ -77,7 +77,7 @@ const normalizeNextcloudUrl = (url: string, username: string) => {
   return normalized;
 };
 
-const createNextcloudClient = (clientUrl: string, user: string, pass: string): WebDAVClient =>
+const createNextcloudClient = (clientUrl: string, user: string, pass: string, rawUrl?: string): WebDAVClient =>
   createClient(clientUrl, {
     username: user,
     password: pass,
@@ -85,6 +85,7 @@ const createNextcloudClient = (clientUrl: string, user: string, pass: string): W
     withCredentials: false,
     headers: {
       Authorization: basicAuthHeader(user, pass),
+      ...(isBrowser && rawUrl ? { 'x-nextcloud-target-url': rawUrl } : {}),
     },
   });
 
@@ -113,24 +114,35 @@ export const disconnectNextcloud = () => {
 
 export const connectNextcloud = (url: string, user: string, pass: string) => {
   const normalizedUrl = normalizeNextcloudUrl(url, user);
-  client = createNextcloudClient(normalizedUrl, user, pass);
+  client = createNextcloudClient(normalizedUrl, user, pass, url);
   return client;
 };
 
 const tryConnect = async (url: string, user: string, pass: string): Promise<WebDAVClient> => {
   const davFilesUrl = normalizeNextcloudUrl(url, user);
-  const c = createNextcloudClient(davFilesUrl, user, pass);
+  const c = createNextcloudClient(davFilesUrl, user, pass, url);
 
   try {
     const ok = await c.exists('/');
-    if (ok) return c;
-    throw new Error('Nextcloud root path unavailable');
-  } catch (error) {
+    if (!ok) {
+      // Force getDirectoryContents call to retrieve actual HTTP status/error if exists() returned false silently
+      await c.getDirectoryContents('/');
+    }
+    return c;
+  } catch (error: any) {
     const message = error instanceof Error ? error.message : String(error);
+    const status = error?.status || error?.response?.status;
+
+    if (status === 401 || /401|unauthorized/i.test(message)) {
+      throw new Error('Invalid Nextcloud username or password');
+    }
+    if (status === 404 || /404|not found/i.test(message)) {
+      throw new Error(`Nextcloud user directory not found for user "${user}". Please check username case and server URL.`);
+    }
     if (/too many requests|429/i.test(message)) {
       throw new Error('Nextcloud rate limit reached — wait a minute and try again');
     }
-    throw new Error(message.includes('401') ? 'Invalid Nextcloud username or password' : message);
+    throw new Error(message || 'Nextcloud root path unavailable');
   }
 };
 
@@ -152,7 +164,9 @@ export const connectNextcloudWithFallback = async (url: string, user: string, pa
 export const testNextcloudConnection = async () => {
   if (!client) throw new Error('Not connected to Nextcloud');
   const success = await client.exists('/');
-  if (!success) throw new Error('Nextcloud root path unavailable');
+  if (!success) {
+    await client.getDirectoryContents('/');
+  }
   return true;
 };
 
@@ -271,4 +285,59 @@ export const createNextcloudDirectory = async (dirPath: string): Promise<string>
     await client.createDirectory(targetDir);
   }
   return targetDir;
+};
+
+export interface ArxivDownloadResult {
+  filename: string;
+  title: string;
+  authors: string;
+  remotePath: string;
+  dataUrl: string;
+}
+
+export const fetchAndUploadArxivPaper = async (
+  arxivId: string,
+  targetFolderPath: string
+): Promise<ArxivDownloadResult> => {
+  const response = await fetch('/api/arxiv/download', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ arxivId }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `arXiv download failed with HTTP ${response.status}`);
+  }
+
+  const data = await response.json();
+  const { title, authors, filename, pdfBase64 } = data;
+
+  const targetDir = normalizeRemotePath(targetFolderPath);
+  const dataUrl = `data:application/pdf;base64,${pdfBase64}`;
+  const remotePath = `${targetDir}/${filename}`;
+
+  if (client) {
+    const binaryString = atob(pdfBase64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+
+    try {
+      await client.getDirectoryContents(targetDir);
+    } catch {
+      await client.createDirectory(targetDir);
+    }
+
+    await client.putFileContents(remotePath, bytes.buffer as ArrayBuffer, { overwrite: true });
+  }
+
+  return {
+    filename,
+    title,
+    authors,
+    remotePath,
+    dataUrl,
+  };
 };
