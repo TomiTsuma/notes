@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { ReactNode, CSSProperties, ButtonHTMLAttributes, HTMLAttributes } from 'react';
 import { Icon, ICONS } from './icons';
 
