@@ -3,7 +3,9 @@ import { get } from 'idb-keyval';
 import { useAppStore, getPersistedSnapshot } from '../store/appStore';
 import { fetchBootstrap, saveBootstrap } from '../services/api';
 
-const DEBOUNCE_MS = 500;
+// Each save serialises the whole store, which is dominated by stroke data. A short
+// window meant a multi-megabyte stringify on the main thread between pen strokes.
+const DEBOUNCE_MS = 2000;
 const IDB_LEGACY_KEY = 'clio-storage';
 
 export function useStoreSync() {

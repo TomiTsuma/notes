@@ -1,0 +1,12 @@
+<!-- @dsCard group="Data" height=290 -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>StatCard — Clio</title>
+<style>html,body{margin:0;background:var(--surface);}#root{padding:20px;}</style>
+</head>
+<body>
+<div id="root" class="cl"></div>
+<script>(()=>{var t=window.Clio,e=a=>window.ReactDOM.createRoot(document.getElementById("root")).render(a);e(React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:16}},React.createElement(t.StatCard,{icon:"check-circle",title:"Tasks done",value:"48",delta:12,chart:{data:[3,5,2,6,4,7,5],labels:["M","T","W","T","F","S","S"],active:4,average:4.6}}),React.createElement(t.StatCard,{icon:"notebook",title:"Notes logged",value:"126",delta:-4,chart:{data:[8,4,6,3,9,5,7,6,4,10,8,6,7,9],active:9}}),React.createElement(t.StatCard,{icon:"kanban",title:"Kanban progress",value:"62",unit:"%",delta:8,deltaLabel:"this week"})));})();
+</script>
+</body>
+</html>

@@ -5,18 +5,22 @@ import ReferenceModal from '../Modals/ReferenceModal';
 
 type RefModalState = { visible: boolean; x: number; y: number; textId: string | null }
 
+const EMPTY_TEXT_ELEMENTS: TextElement[] = [];
+
 const TextLayer: React.FC<{ documentId?: string }> = ({ documentId }) => {
-  const {
-    activeDocumentId, annotations, updateTextElement, deleteTextElement,
-    updateTextElementPosition, focusedTextId, setFocusedTextId,
-  } = useAppStore();
-  
+  const activeDocumentId = useAppStore(s => s.activeDocumentId);
+  const focusedTextId = useAppStore(s => s.focusedTextId);
+  const updateTextElement = useAppStore(s => s.updateTextElement);
+  const deleteTextElement = useAppStore(s => s.deleteTextElement);
+  const updateTextElementPosition = useAppStore(s => s.updateTextElementPosition);
+  const setFocusedTextId = useAppStore(s => s.setFocusedTextId);
+
   // Use documentId prop for rendering (each notebook page shows its own text elements),
   // fall back to global activeDocumentId for non-notebook contexts
   const effectiveDocId = documentId || activeDocumentId;
   const isActive = effectiveDocId === activeDocumentId;
-  const textElements = effectiveDocId && annotations[effectiveDocId] ? annotations[effectiveDocId].textElements : [];
-  
+  const textElements = useAppStore(s => (effectiveDocId ? s.annotations[effectiveDocId]?.textElements : undefined)) ?? EMPTY_TEXT_ELEMENTS;
+
   const [refModal, setRefModal] = useState<RefModalState>({ visible: false, x: 0, y: 0, textId: null });
   const textareaRefs = useRef<{ [key: string]: HTMLTextAreaElement | null }>({});
   const [draggingEl, setDraggingEl] = useState<string | null>(null);
@@ -80,7 +84,7 @@ const TextLayer: React.FC<{ documentId?: string }> = ({ documentId }) => {
   const handlePointerUp = () => setDraggingEl(null);
 
   return (
-    <div ref={containerRef} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none' }}>
+    <div ref={containerRef} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 20 }}>
       {textElements.map(el => (
         <div 
           key={el.id}

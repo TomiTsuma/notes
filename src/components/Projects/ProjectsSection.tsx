@@ -1,643 +1,390 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../../store/appStore';
 import { v4 as uuidv4 } from 'uuid';
-import FolderFloat, { type FolderFloatItem } from '../UI/FolderFloat';
+import {
+  ViewHeader,
+  SectionHeader,
+  SegmentedControl,
+  SearchField,
+  Button,
+  IconButton,
+  ProjectCard,
+  ProjectRow,
+  AddTile,
+  NoteCard,
+  Tag,
+  StatusPill,
+  ProgressDots,
+  Card,
+  CardTitle,
+  Modal,
+  TextField,
+  ColorPicker,
+  PROJECT_COLORS,
+} from '../UI/clio';
 
 const ProjectsSection: React.FC = () => {
-  const { 
-    projects, 
-    files, 
-    kanbanTasks, 
-    selectedProjectId, 
-    setSelectedProjectId, 
-    deleteProject, 
+  const {
+    projects,
+    files,
+    kanbanTasks,
+    selectedProjectId,
+    setSelectedProjectId,
+    deleteProject,
     updateProject,
     addProject,
     addFile,
-    addNotebook,
     setActiveDocument,
     setActiveView,
-    associateFileToProject
   } = useAppStore();
 
-  const [viewMode, setViewMode] = useState<'grid' | 'detail'>('grid');
+  const [layoutMode, setLayoutMode] = useState<'grid' | 'list'>('grid');
+  const [filterTab, setFilterTab] = useState<'all' | 'star' | 'done'>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+
   const [showNewProjModal, setShowNewProjModal] = useState(false);
-  const [newProjNameInput, setNewProjNameInput] = useState('');
-  const [newProjDescInput, setNewProjDescInput] = useState('');
-  const [newProjColorInput, setNewProjColorInput] = useState('#007aff');
+  const [newProjName, setNewProjName] = useState('');
+  const [newProjDesc, setNewProjDesc] = useState('');
+  const [newProjColor, setNewProjColor] = useState('sky');
 
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState('');
   const [editDesc, setEditDesc] = useState('');
-  const [editColor, setEditColor] = useState('');
-  
-  const [newNoteName, setNewNoteName] = useState('');
-  const [newNoteType, setNewNoteType] = useState<'md' | 'txt'>('md');
-  const [showNoteForm, setShowNoteForm] = useState(false);
-  const [showNotebookForm, setShowNotebookForm] = useState(false);
-  const [newNotebookName, setNewNotebookName] = useState('');
+  const [editColor, setEditColor] = useState('sky');
 
-  const activeProj = projects.find(p => p.id === selectedProjectId) || projects[0] || null;
+  const selectedProj = projects.find((p) => p.id === selectedProjectId) || null;
 
-  // Set edit defaults when active project changes
-  const startEditing = () => {
-    if (!activeProj) return;
-    setEditName(activeProj.name);
-    setEditDesc(activeProj.description);
-    setEditColor(activeProj.color);
-    setIsEditing(true);
+  const handleCreateProject = () => {
+    if (!newProjName.trim()) return;
+    const newProj = {
+      id: `proj-${uuidv4().substring(0, 8)}`,
+      name: newProjName,
+      description: newProjDesc,
+      color: newProjColor,
+      createdAt: new Date().toISOString(),
+    };
+    addProject(newProj);
+    setNewProjName('');
+    setNewProjDesc('');
+    setShowNewProjModal(false);
   };
 
   const handleSaveEdit = () => {
-    if (!activeProj) return;
-    updateProject(activeProj.id, {
+    if (!selectedProj) return;
+    updateProject(selectedProj.id, {
       name: editName,
       description: editDesc,
-      color: editColor
+      color: editColor,
     });
     setIsEditing(false);
   };
 
-  const handleAddNewNote = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newNoteName.trim() || !activeProj) return;
-
-    const noteNameWithExt = newNoteName.endsWith(`.${newNoteType}`) ? newNoteName : `${newNoteName}.${newNoteType}`;
-    const newNoteId = `note-${uuidv4().substring(0, 8)}`;
-    
-    // Create base64 encoded empty initial note content
-    const initialContent = `# ${newNoteName}\nCreated under project *${activeProj.name}* on ${new Date().toLocaleDateString()}.\n\nStart typing notes here...`;
-    const base64Data = `data:text/plain;base64,${btoa(initialContent)}`;
-
-    addFile({
-      id: newNoteId,
-      name: noteNameWithExt,
-      type: newNoteType,
-      folderId: null,
-      projectId: activeProj.id,
-      dataUrl: base64Data
-    });
-
-    setNewNoteName('');
-    setShowNoteForm(false);
-    setActiveDocument(newNoteId);
-    setActiveView('canvas');
-  };
-
-  const handleAddNotebook = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newNotebookName.trim() || !activeProj) return;
-    addNotebook(newNotebookName, activeProj.id);
-    setNewNotebookName('');
-    setShowNotebookForm(false);
-  };
-
   const handleDeleteProj = () => {
-    if (!activeProj) return;
-    if (confirm(`Are you sure you want to delete project '${activeProj.name}'? Linked notes will be moved to the Inbox.`)) {
-      deleteProject(activeProj.id);
+    if (!selectedProj) return;
+    if (confirm(`Are you sure you want to delete project '${selectedProj.name}'?`)) {
+      deleteProject(selectedProj.id);
+      setSelectedProjectId(null);
     }
   };
 
-  const projectNotes = activeProj ? files.filter(f => f.projectId === activeProj.id) : [];
-  const inboxNotes = files.filter(f => !f.projectId);
-  const projectTasks = activeProj ? kanbanTasks.filter(t => t.projectId === activeProj.id) : [];
+  const handleCreateNote = () => {
+    if (!selectedProj) return;
+    const name = prompt('Note title:');
+    if (!name) return;
+    const newFile = {
+      id: 'file-' + Date.now(),
+      name,
+      type: 'notebook',
+      folderId: null,
+      projectId: selectedProj.id,
+    };
+    addFile(newFile);
+    setActiveDocument(newFile.id);
+    setActiveView('canvas');
+  };
 
-  const colors = ['#0a7aff', '#34c759', '#af52de', '#ff9500', '#ff2d55', '#5856d6', '#00c48c'];
+  const filteredProjects = projects.filter((p) => {
+    if (searchQuery && !p.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+    if (filterTab === 'star') return p.id === 'proj-1';
+    return true;
+  });
 
-  return (
-    <div className="workspace-view-container" style={{ gap: '24px', maxWidth: '1240px', margin: '0 auto', width: '100%' }}>
-      {/* Top Header Row */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
-        <div>
-          <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--accent-color)', letterSpacing: '0.4px', textTransform: 'uppercase', marginBottom: '2px' }}>
-            WORKSPACE REPOSITORY
-          </div>
-          <h1 style={{ fontSize: '26px', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.4px' }}>
-            Projects & Folders
-          </h1>
-          <p style={{ fontSize: '14px', color: 'var(--text-muted)', marginTop: '2px', fontWeight: 400 }}>
-            Hover over any project folder to preview floating notes and papers inside it.
-          </p>
+  const unsortedFiles = files.filter((f) => !f.projectId);
+
+  if (selectedProj) {
+    const projFiles = files.filter((f) => f.projectId === selectedProj.id);
+    const projTasks = kanbanTasks.filter((t) => t.projectId === selectedProj.id);
+    const completedTasks = projTasks.filter((t) => t.status === 'done').length;
+    const progressPercent = projTasks.length > 0 ? Math.round((completedTasks / projTasks.length) * 100) : 50;
+
+    return (
+      <div className="cl-view" style={{ padding: '32px 40px', width: '100%', boxSizing: 'border-box' }}>
+        <div style={{ marginBottom: 16 }}>
+          <Button variant="ghost" size="sm" icon="chevron-left" onClick={() => setSelectedProjectId(null)}>
+            Back to Project Hub
+          </Button>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div className="apple-segmented-control">
-            <button
-              className={`apple-segmented-item ${viewMode === 'grid' ? 'active' : ''}`}
-              onClick={() => setViewMode('grid')}
-            >
-              📁 Folder Grid
-            </button>
-            <button
-              className={`apple-segmented-item ${viewMode === 'detail' ? 'active' : ''}`}
-              onClick={() => setViewMode('detail')}
-            >
-              📋 Project Detail
-            </button>
+        <div className={`cl-group w-${selectedProj.color || 'sky'}`} style={{ padding: '24px 28px', gap: 16, marginBottom: 24, borderRadius: 'var(--radius-lg)' }}>
+          <div className="cl-row" style={{ justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'nowrap' }}>
+            <div>
+              <div className="cl-row" style={{ gap: 8, marginBottom: 8 }}>
+                <Tag tone={selectedProj.color || 'sky'}>Research Project</Tag>
+                <StatusPill status="inprogress" />
+              </div>
+              <h1 className="cl-h-display">{selectedProj.name}</h1>
+              <p style={{ margin: '6px 0 0', color: 'var(--ink-2)', maxWidth: 620 }}>{selectedProj.description || 'Project workspace for papers, notes, and tasks.'}</p>
+            </div>
+            <div className="cl-row" style={{ flexWrap: 'nowrap' }}>
+              <Button
+                icon="pencil"
+                onClick={() => {
+                  setEditName(selectedProj.name);
+                  setEditDesc(selectedProj.description);
+                  setEditColor(selectedProj.color || 'sky');
+                  setIsEditing(true);
+                }}
+              >
+                Edit
+              </Button>
+              <Button variant="primary" icon="plus" onClick={handleCreateNote}>
+                New note
+              </Button>
+              <IconButton icon="trash" label="Delete project" onClick={handleDeleteProj} />
+            </div>
           </div>
 
-          <button
-            onClick={() => setShowNewProjModal(true)}
-            style={{
-              background: 'var(--accent-color)',
-              color: 'white',
-              border: 'none',
-              borderRadius: '8px',
-              padding: '8px 14px',
-              fontSize: '13px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6
-            }}
-            className="btn-animate"
-          >
-            + New Project
-          </button>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginTop: 16 }}>
+            <Card className="cl-stat" style={{ padding: '12px 16px' }}>
+              <span className="cl-overline">Notebooks</span>
+              <div className="v" style={{ fontSize: 24, margin: 0 }}>
+                {projFiles.length}
+              </div>
+            </Card>
+            <Card className="cl-stat" style={{ padding: '12px 16px' }}>
+              <span className="cl-overline">Linked files</span>
+              <div className="v" style={{ fontSize: 24, margin: 0 }}>
+                {projFiles.filter((f) => f.type === 'pdf').length}
+              </div>
+            </Card>
+            <Card className="cl-stat" style={{ padding: '12px 16px' }}>
+              <span className="cl-overline">Open tasks</span>
+              <div className="v" style={{ fontSize: 24, margin: 0 }}>
+                {projTasks.filter((t) => t.status !== 'done').length}
+              </div>
+            </Card>
+            <Card style={{ padding: '12px 16px' }} className={`w-${selectedProj.color || 'sky'}`}>
+              <ProgressDots value={progressPercent} total={14} label="Kanban progress" />
+            </Card>
+          </div>
         </div>
-      </div>
 
-      {viewMode === 'grid' ? (
-        /* Folder Float 3D Grid View */
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-            gap: '36px 24px',
-            paddingBottom: '40px',
-          }}
-        >
-          {projects.map(proj => {
-            const projFiles = files.filter(f => f.projectId === proj.id);
-            const items: FolderFloatItem[] = projFiles.map(f => ({
-              id: f.id,
-              title: f.name,
-              type: f.type,
-              subtitle: f.tags?.join(', ') || 'Note',
-              onClick: () => {
-                setActiveDocument(f.id);
-                setActiveView('canvas');
+        <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr', gap: 24, alignItems: 'start' }}>
+          <div>
+            <SectionHeader
+              title="Notebooks & notes"
+              icon="notebook"
+              actions={
+                <Button size="sm" icon="plus" onClick={handleCreateNote}>
+                  New notebook
+                </Button>
               }
-            }));
-
-            return (
-              <FolderFloat
-                key={proj.id}
-                id={proj.id}
-                label={proj.name}
-                sublabel={proj.description || `${projFiles.length} ${projFiles.length === 1 ? 'note' : 'notes'}`}
-                color={proj.color}
-                items={items}
-                onOpenFolder={() => {
-                  setSelectedProjectId(proj.id);
-                  setViewMode('detail');
-                }}
-                onSelectItem={(item) => {
-                  setActiveDocument(item.id);
-                  setActiveView('canvas');
-                }}
-              />
-            );
-          })}
-
-          {inboxNotes.length > 0 && (
-            <FolderFloat
-              id="inbox-folder"
-              label="Inbox / Unfiled"
-              sublabel={`${inboxNotes.length} unassigned notes`}
-              color="#86868b"
-              items={inboxNotes.map(f => ({
-                id: f.id,
-                title: f.name,
-                type: f.type,
-                subtitle: 'Unfiled',
-                onClick: () => {
-                  setActiveDocument(f.id);
-                  setActiveView('canvas');
-                }
-              }))}
-              onSelectItem={(item) => {
-                setActiveDocument(item.id);
-                setActiveView('canvas');
-              }}
             />
-          )}
-
-          {projects.length === 0 && inboxNotes.length === 0 && (
-            <div className="glass-card" style={{ gridColumn: '1/-1', padding: 48, textAlign: 'center', color: 'var(--text-muted)' }}>
-              <p style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)' }}>No projects or notes yet</p>
-              <p style={{ fontSize: 13, marginTop: 4 }}>Click '+ New Project' above to start organizing your research.</p>
-            </div>
-          )}
-        </div>
-      ) : (
-        /* Focused Detail Split View */
-        <div style={{ display: 'flex', flexDirection: 'row', gap: '24px', flex: 1, minHeight: 0 }}>
-          {/* Left panel: projects list */}
-          <div 
-            className="glass-card" 
-            style={{ 
-              width: '280px', 
-              display: 'flex', 
-              flexDirection: 'column', 
-              padding: '20px', 
-              gap: '16px',
-              flexShrink: 0
-            }}
-          >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h3 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)' }}>Projects</h3>
-          <button 
-            onClick={() => setActiveView('home')}
-            style={{ border: 'none', background: 'transparent', color: '#0a7aff', fontWeight: 800, fontSize: '12px', cursor: 'pointer' }}
-          >
-            + Create
-          </button>
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1, overflowY: 'auto' }}>
-          {projects.map(proj => {
-            const isSelected = activeProj?.id === proj.id;
-            return (
-              <div
-                key={proj.id}
-                onClick={() => {
-                  setSelectedProjectId(proj.id);
-                  setIsEditing(false);
-                }}
-                className="btn-animate"
-                style={{
-                  padding: '12px',
-                  borderRadius: '12px',
-                  cursor: 'pointer',
-                  border: isSelected ? `1.5px solid ${proj.color}` : '1.5px solid transparent',
-                  backgroundColor: isSelected ? `${proj.color}10` : 'rgba(0,0,0,0.02)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px'
-                }}
-              >
-                <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: proj.color }} />
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {proj.name}
-                  </div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                    {files.filter(f => f.projectId === proj.id).length} notes
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Right panel: project details and notebook linking */}
-      {activeProj ? (
-        <div 
-          className="glass-card" 
-          style={{ 
-            flex: 1, 
-            display: 'flex', 
-            flexDirection: 'column', 
-            padding: '32px', 
-            gap: '24px',
-            overflowY: 'auto'
-          }}
-        >
-          
-          {/* Project Details Banner */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid rgba(0,0,0,0.06)', paddingBottom: '20px' }}>
-            {isEditing ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flex: 1 }}>
-                <input 
-                  value={editName}
-                  onChange={e => setEditName(e.target.value)}
-                  style={{ fontSize: '24px', fontWeight: 900, borderRadius: '8px', border: '1px solid var(--border-color)', padding: '6px 12px', maxWidth: '300px' }}
-                />
-                <textarea 
-                  value={editDesc}
-                  onChange={e => setEditDesc(e.target.value)}
-                  rows={2}
-                  style={{ fontSize: '14px', borderRadius: '8px', border: '1px solid var(--border-color)', padding: '6px 12px', resize: 'none', fontFamily: 'inherit' }}
-                />
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  {colors.map(c => (
-                    <button 
-                      key={c}
-                      onClick={() => setEditColor(c)}
-                      style={{ width: '22px', height: '22px', borderRadius: '50%', backgroundColor: c, border: editColor === c ? '2.5px solid #1c1c1e' : 'none', cursor: 'pointer', padding: 0 }}
-                    />
-                  ))}
-                </div>
-                <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
-                  <button onClick={() => setIsEditing(false)} style={{ border: 'none', padding: '8px 16px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', backgroundColor: '#f0f0f5', color: 'var(--text-primary)' }}>Cancel</button>
-                  <button onClick={handleSaveEdit} style={{ border: 'none', padding: '8px 16px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', backgroundColor: activeProj.color, color: 'white' }}>Save Changes</button>
-                </div>
-              </div>
-            ) : (
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{ width: '14px', height: '14px', borderRadius: '50%', backgroundColor: activeProj.color }} />
-                  <h2 style={{ fontSize: '26px', fontWeight: 900, color: 'var(--text-primary)', letterSpacing: '-0.5px' }}>{activeProj.name}</h2>
-                </div>
-                <p style={{ fontSize: '14px', color: 'var(--text-muted)', marginTop: '8px', lineHeight: 1.5, maxWidth: '600px' }}>
-                  {activeProj.description || 'No description provided for this project.'}
-                </p>
-                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 700, marginTop: '12px' }}>
-                  CREATED ON {new Date(activeProj.createdAt).toLocaleDateString()}
-                </div>
-              </div>
-            )}
-
-            {!isEditing && (
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button 
-                  onClick={startEditing}
-                  style={{ border: 'none', background: 'var(--bg-inset)', borderRadius: '10px', padding: '8px 14px', fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)', cursor: 'pointer' }}
-                  className="btn-animate"
-                >
-                  Edit details
-                </button>
-                <button 
-                  onClick={handleDeleteProj}
-                  style={{ border: 'none', background: 'rgba(255, 45, 85, 0.08)', borderRadius: '10px', padding: '8px 14px', fontSize: '12px', fontWeight: 700, color: '#ff2d55', cursor: 'pointer' }}
-                  className="btn-animate"
-                >
-                  Delete project
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Quick Metrics Row */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px' }}>
-            <div style={{ backgroundColor: 'rgba(0,0,0,0.02)', borderRadius: '14px', padding: '16px' }}>
-              <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Notebooks</div>
-              <div style={{ fontSize: '24px', fontWeight: 900, color: 'var(--text-primary)', marginTop: '6px' }}>{projectNotes.length}</div>
-            </div>
-            <div style={{ backgroundColor: 'rgba(0,0,0,0.02)', borderRadius: '14px', padding: '16px' }}>
-              <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Kanban Tasks</div>
-              <div style={{ fontSize: '24px', fontWeight: 900, color: 'var(--text-primary)', marginTop: '6px' }}>{projectTasks.length}</div>
-            </div>
-            <div style={{ backgroundColor: 'rgba(0,0,0,0.02)', borderRadius: '14px', padding: '16px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-              <button 
-                onClick={() => {
-                  setSelectedProjectId(activeProj.id);
-                  setActiveView('kanban');
-                }}
-                style={{ border: 'none', background: activeProj.color, color: 'white', fontWeight: 800, fontSize: '12px', padding: '10px 14px', borderRadius: '10px', cursor: 'pointer' }}
-                className="btn-animate"
-              >
-                Go to Kanban Board →
-              </button>
-            </div>
-          </div>
-
-          {/* Notebooks Sub-section */}
-          <div style={{ marginTop: '12px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <h3 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)' }}>Linked Notes & Files</h3>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button 
-                  onClick={() => setShowNotebookForm(true)}
-                  style={{ border: 'none', background: 'rgba(52, 199, 89, 0.08)', color: '#34c759', fontWeight: 800, fontSize: '12px', padding: '8px 14px', borderRadius: '10px', cursor: 'pointer' }}
-                  className="btn-animate"
-                >
-                  + Notebook
-                </button>
-                <button 
-                  onClick={() => setShowNoteForm(true)}
-                  style={{ border: 'none', background: 'rgba(10, 122, 255, 0.08)', color: '#0a7aff', fontWeight: 800, fontSize: '12px', padding: '8px 14px', borderRadius: '10px', cursor: 'pointer' }}
-                  className="btn-animate"
-                >
-                  + Add Note
-                </button>
-              </div>
-            </div>
-
-            {/* Notebook Creation Mini Form */}
-            {showNotebookForm && (
-              <form onSubmit={handleAddNotebook} className="glass-card" style={{ padding: '20px', display: 'flex', gap: '12px', flexDirection: 'column', marginBottom: '16px', border: '1px solid rgba(0,0,0,0.08)' }}>
-                <h4 style={{ fontSize: '13px', fontWeight: 800 }}>Create Notebook</h4>
-                <p style={{ fontSize: '11px', color: 'var(--text-secondary)', margin: 0 }}>A lined notebook for handwriting with your Apple Pencil.</p>
-                <div style={{ display: 'flex', gap: '10px' }}>
-                  <input 
-                    value={newNotebookName}
-                    onChange={e => setNewNotebookName(e.target.value)}
-                    placeholder="Notebook title (e.g. Meeting Notes)"
-                    required
-                    style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', fontSize: '13px' }}
-                  />
-                </div>
-                <div style={{ display: 'flex', gap: '8px', alignSelf: 'flex-end' }}>
-                  <button type="button" onClick={() => setShowNotebookForm(false)} style={{ border: 'none', padding: '8px 12px', borderRadius: '8px', fontSize: '11px', fontWeight: 700, cursor: 'pointer', background: '#f0f0f5' }}>Cancel</button>
-                  <button type="submit" style={{ border: 'none', padding: '8px 12px', borderRadius: '8px', fontSize: '11px', fontWeight: 700, cursor: 'pointer', background: '#34c759', color: 'white' }}>Create Notebook</button>
-                </div>
-              </form>
-            )}
-
-            {/* Note Creation Mini Form */}
-            {showNoteForm && (
-              <form onSubmit={handleAddNewNote} className="glass-card" style={{ padding: '20px', display: 'flex', gap: '12px', flexDirection: 'column', marginBottom: '16px', border: '1px solid rgba(0,0,0,0.08)' }}>
-                <h4 style={{ fontSize: '13px', fontWeight: 800 }}>Create Project Note</h4>
-                <div style={{ display: 'flex', gap: '10px' }}>
-                  <input 
-                    value={newNoteName}
-                    onChange={e => setNewNoteName(e.target.value)}
-                    placeholder="Note title (e.g. Brainstorming)"
-                    required
-                    style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', fontSize: '13px' }}
-                  />
-                  <select 
-                    value={newNoteType}
-                    onChange={e => setNewNoteType(e.target.value as any)}
-                    style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', fontSize: '13px', backgroundColor: '#fff' }}
-                  >
-                    <option value="md">Markdown (.md)</option>
-                    <option value="txt">Plain Text (.txt)</option>
-                  </select>
-                </div>
-                <div style={{ display: 'flex', gap: '8px', alignSelf: 'flex-end' }}>
-                  <button type="button" onClick={() => setShowNoteForm(false)} style={{ border: 'none', padding: '8px 12px', borderRadius: '8px', fontSize: '11px', fontWeight: 700, cursor: 'pointer', background: '#f0f0f5' }}>Cancel</button>
-                  <button type="submit" style={{ border: 'none', padding: '8px 12px', borderRadius: '8px', fontSize: '11px', fontWeight: 700, cursor: 'pointer', background: activeProj.color, color: 'white' }}>Create</button>
-                </div>
-              </form>
-            )}
-
-            {/* Notes Grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px' }}>
-              {projectNotes.map(file => (
-                <div 
-                  key={file.id}
-                  className="glass-card glass-card-hover"
-                  style={{ padding: '16px', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: '12px', border: '1px solid rgba(0,0,0,0.03)' }}
-                  onClick={() => {
-                    if (file.type === 'notebook' && file.notebookPageIds && file.notebookPageIds.length > 0) {
-                      setActiveDocument(file.notebookPageIds[0]);
-                    } else {
-                      setActiveDocument(file.id);
-                    }
-                    setActiveView('canvas');
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: file.type === 'notebook' ? 'rgba(52, 199, 89, 0.1)' : `${activeProj.color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: file.type === 'notebook' ? '#34c759' : activeProj.color }}>
-                      {file.type === 'notebook' ? (
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="16" y2="11"/><line x1="8" y1="15" x2="13" y2="15"/></svg>
-                      ) : (
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z"/></svg>
-                      )}
-                    </div>
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</div>
-                      <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '2px', fontWeight: 600 }}>{file.type === 'notebook' ? `${file.notebookPageIds?.length || 0} pages` : file.type.toUpperCase() + ' File'}</div>
-                    </div>
-                  </div>
-                  <div 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (confirm(`Remove note '${file.name}' from project '${activeProj.name}'?`)) {
-                        associateFileToProject(file.id, null);
-                      }
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 12 }}>
+              {projFiles.length > 0 ? (
+                projFiles.map((f) => (
+                  <NoteCard
+                    key={f.id}
+                    title={f.name}
+                    kind={f.type === 'pdf' ? 'pdf' : 'notebook'}
+                    body={`Project file attached to ${selectedProj.name}.`}
+                    updated="Today"
+                    onClick={() => {
+                      setActiveDocument(f.id);
+                      setActiveView('canvas');
                     }}
-                    style={{
-                      fontSize: '11px',
-                      color: 'var(--text-secondary)',
-                      alignSelf: 'flex-end',
-                      cursor: 'pointer',
-                      fontWeight: 700
-                    }}
-                    title="Unlink from project"
-                  >
-                    Unlink
-                  </div>
-                </div>
-              ))}
-
-              {projectNotes.length === 0 && (
-                <div style={{ gridColumn: '1/-1', padding: '32px', textAlign: 'center', color: 'var(--text-secondary)', fontStyle: 'italic', fontSize: '13px' }}>
-                  No notes linked to this project yet. Link a file from the list below or click '+ Add Note'.
-                </div>
+                  />
+                ))
+              ) : (
+                <AddTile label="Add a note to this project" onClick={handleCreateNote} minHeight={150} />
               )}
             </div>
           </div>
 
-          {/* Linking Existing Unsorted Inbox Notes */}
-          {inboxNotes.length > 0 && (
-            <div style={{ marginTop: '16px', borderTop: '1px solid rgba(0,0,0,0.06)', paddingTop: '24px' }}>
-              <h3 style={{ fontSize: '14px', fontWeight: 800, color: 'var(--text-muted)', marginBottom: '12px' }}>📥 Link Unsorted Inbox Notes</h3>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
-                {inboxNotes.map(file => (
-                  <button
-                    key={file.id}
-                    onClick={() => associateFileToProject(file.id, activeProj.id)}
-                    style={{
-                      backgroundColor: '#fff',
-                      border: '1px solid rgba(0,0,0,0.08)',
-                      borderRadius: '10px',
-                      padding: '8px 12px',
-                      fontSize: '12px',
-                      fontWeight: 700,
-                      color: 'var(--text-primary)',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px'
-                    }}
-                    className="btn-animate"
-                  >
-                    <span>📎 {file.name}</span>
-                  </button>
-                ))}
+          <div>
+            <Card style={{ padding: 16 }}>
+              <CardTitle icon="kanban" title="Kanban tasks" actions={false} />
+              <div className="cl-col" style={{ gap: 10, marginTop: 12 }}>
+                {projTasks.length > 0 ? (
+                  projTasks.map((t) => (
+                    <div
+                      key={t.id}
+                      className="cl-row"
+                      style={{ justifyContent: 'space-between', flexWrap: 'nowrap', padding: '8px 0', borderTop: '1px solid var(--line)' }}
+                    >
+                      <div style={{ minWidth: 0 }}>
+                        <div className="cl-mono cl-faint">{t.id}</div>
+                        <b style={{ fontSize: 13.5 }}>{t.title}</b>
+                      </div>
+                      <StatusPill status={t.status} />
+                    </div>
+                  ))
+                ) : (
+                  <p style={{ fontSize: 13, color: 'var(--ink-2)', margin: '8px 0' }}>No tasks linked yet. Create one on the Kanban board.</p>
+                )}
               </div>
-            </div>
-          )}
+              <div style={{ marginTop: 12 }}>
+                <Button variant="ghost" size="sm" iconRight="chevron-right" block onClick={() => setActiveView('kanban')}>
+                  Open board
+                </Button>
+              </div>
+            </Card>
+          </div>
+        </div>
 
+        {isEditing && (
+          <Modal
+            title="Edit project"
+            onClose={() => setIsEditing(false)}
+            footer={
+              <>
+                <Button onClick={() => setIsEditing(false)}>Cancel</Button>
+                <Button variant="primary" onClick={handleSaveEdit}>
+                  Save changes
+                </Button>
+              </>
+            }
+          >
+            <TextField label="Project name" value={editName} onChange={(e) => setEditName(e.target.value)} />
+            <TextField label="Description" value={editDesc} onChange={(e) => setEditDesc(e.target.value)} multiline />
+            <div>
+              <span className="cl-field-label" style={{ display: 'block', marginBottom: 8 }}>
+                Theme colour
+              </span>
+              <ColorPicker colors={PROJECT_COLORS} value={editColor} onChange={(c) => setEditColor(c)} />
+            </div>
+          </Modal>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="cl-view" style={{ padding: '32px 40px', width: '100%', boxSizing: 'border-box' }}>
+      <ViewHeader
+        title="Project Hub"
+        subtitle="Group notebooks, papers and tasks by what you’re working towards."
+        actions={
+          <>
+            <SearchField placeholder="Search projects" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} style={{ width: 220 }} />
+            <SegmentedControl
+              iconOnly
+              value={layoutMode}
+              onChange={(v) => setLayoutMode(v as any)}
+              options={[
+                { value: 'grid', label: 'Grid view', icon: 'grid' },
+                { value: 'list', label: 'List view', icon: 'list' },
+              ]}
+            />
+            <Button variant="primary" icon="plus" onClick={() => setShowNewProjModal(true)}>
+              New project
+            </Button>
+          </>
+        }
+      />
+
+      <div className="cl-row" style={{ marginBottom: 20, marginTop: 16 }}>
+        <SegmentedControl
+          value={filterTab}
+          onChange={(v) => setFilterTab(v as any)}
+          options={[
+            { value: 'all', label: `All · ${projects.length}` },
+            { value: 'star', label: 'Starred' },
+            { value: 'done', label: 'Completed' },
+          ]}
+        />
+      </div>
+
+      {layoutMode === 'grid' ? (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
+          {filteredProjects.map((p) => (
+            <ProjectCard
+              key={p.id}
+              name={p.name}
+              context="Research Project"
+              description={p.description}
+              color={p.color || 'sky'}
+              starred
+              status="inprogress"
+              activity="Active recently"
+              progress={60}
+              onClick={() => setSelectedProjectId(p.id)}
+            />
+          ))}
+          <AddTile label="New project" onClick={() => setShowNewProjModal(true)} />
         </div>
       ) : (
-        <div style={{ flex: 1, padding: '40px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', fontStyle: 'italic' }}>
-          No active projects found. Head to the Dashboard to create one!
+        <div className="cl-col" style={{ gap: 8 }}>
+          {filteredProjects.map((p) => (
+            <ProjectRow
+              key={p.id}
+              name={p.name}
+              context={p.description}
+              color={p.color || 'sky'}
+              starred
+              status="inprogress"
+              activity="Active recently"
+              onClick={() => setSelectedProjectId(p.id)}
+            />
+          ))}
         </div>
       )}
-    </div>
-  )}
+
+      <div className="cl-section" style={{ marginTop: 36 }}>
+        <SectionHeader title="Unsorted notes" icon="file" count={unsortedFiles.length} />
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginTop: 12 }}>
+          {unsortedFiles.length > 0 ? (
+            unsortedFiles.map((f) => (
+              <NoteCard
+                key={f.id}
+                title={f.name}
+                kind={f.type === 'pdf' ? 'pdf' : 'notebook'}
+                body="Unsorted document in workspace."
+                updated="Sep 22"
+                onClick={() => {
+                  setActiveDocument(f.id);
+                  setActiveView('canvas');
+                }}
+              />
+            ))
+          ) : (
+            <NoteCard title="Random ideas" body="Could a VQ codebook help retrieve similar soil spectra?" updated="Sep 22" />
+          )}
+        </div>
+      </div>
 
       {showNewProjModal && (
-        <div className="event-modal-overlay" onClick={() => setShowNewProjModal(false)}>
-          <form
-            className="event-modal-form glass-card"
-            onClick={e => e.stopPropagation()}
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (!newProjNameInput.trim()) return;
-              addProject({
-                id: `proj-${uuidv4().substring(0, 8)}`,
-                name: newProjNameInput,
-                description: newProjDescInput,
-                color: newProjColorInput,
-                createdAt: new Date().toISOString()
-              });
-              setNewProjNameInput('');
-              setNewProjDescInput('');
-              setShowNewProjModal(false);
-            }}
-          >
-            <h3 style={{ fontSize: 17, fontWeight: 700, color: 'var(--text-primary)' }}>New Project</h3>
-            <input
-              placeholder="Project Name"
-              value={newProjNameInput}
-              onChange={e => setNewProjNameInput(e.target.value)}
-              required
-              style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 13 }}
-            />
-            <textarea
-              placeholder="Description (optional)"
-              value={newProjDescInput}
-              onChange={e => setNewProjDescInput(e.target.value)}
-              rows={2}
-              style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 13, fontFamily: 'inherit' }}
-            />
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>Folder Color:</span>
-              {colors.map(c => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => setNewProjColorInput(c)}
-                  style={{
-                    width: 24,
-                    height: 24,
-                    borderRadius: '50%',
-                    backgroundColor: c,
-                    border: newProjColorInput === c ? '2.5px solid white' : 'none',
-                    boxShadow: newProjColorInput === c ? '0 0 0 2px var(--accent-color)' : 'none',
-                    cursor: 'pointer'
-                  }}
-                />
-              ))}
-            </div>
-            <div style={{ display: 'flex', gap: 10, marginTop: 6 }}>
-              <button
-                type="button"
-                onClick={() => setShowNewProjModal(false)}
-                style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--btn-secondary-bg)', color: 'var(--btn-secondary-text)', cursor: 'pointer', fontWeight: 600, fontSize: 13 }}
-                className="btn-animate"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                style={{ flex: 2, padding: '10px 14px', borderRadius: 8, border: 'none', background: 'var(--accent-color)', color: 'white', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}
-                className="btn-animate"
-              >
-                Create Project
-              </button>
-            </div>
-          </form>
-        </div>
+        <Modal
+          title="Create new project"
+          onClose={() => setShowNewProjModal(false)}
+          footer={
+            <>
+              <Button onClick={() => setShowNewProjModal(false)}>Cancel</Button>
+              <Button variant="primary" onClick={handleCreateProject}>
+                Create project
+              </Button>
+            </>
+          }
+        >
+          <TextField label="Project name" value={newProjName} onChange={(e) => setNewProjName(e.target.value)} placeholder="e.g. Molecular Generation Review" />
+          <TextField label="Description" value={newProjDesc} onChange={(e) => setNewProjDesc(e.target.value)} placeholder="Brief summary of research goals…" multiline />
+          <div>
+            <span className="cl-field-label" style={{ display: 'block', marginBottom: 8 }}>
+              Project theme colour
+            </span>
+            <ColorPicker colors={PROJECT_COLORS} value={newProjColor} onChange={(c) => setNewProjColor(c)} />
+          </div>
+        </Modal>
       )}
     </div>
   );

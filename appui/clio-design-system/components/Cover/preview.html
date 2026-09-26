@@ -1,0 +1,61 @@
+<!-- @dsCard height=288 -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Clio</title>
+<style>
+  html, body { margin:0; height:100%; }
+  body { background:var(--surface); color:var(--ink); font-family:var(--font-sans); overflow:hidden; }
+  .cover { position:relative; height:288px; width:960px; overflow:hidden; }
+  .art { position:absolute; top:0; left:480px; width:480px; height:288px; overflow:hidden; }
+  .art svg { display:block; }
+  .ink { fill:var(--primary); }
+  .lilac { fill:var(--lilac-tint); }
+  .amber { fill:var(--amber-tint); }
+  .sage { fill:var(--sage-tint); }
+  .rose { fill:var(--rose-tint); }
+  .flame { fill:var(--amber-solid); }
+  .blk { rx:var(--radius-lg); }
+  .chip { rx:var(--radius-md); }
+  .rule { stroke:var(--paper-rule); stroke-width:1.5; }
+  .ink .rule, .rule.on-ink { stroke:var(--ink-3); }
+  .margin { stroke:var(--paper-margin); stroke-width:2; }
+  .words { position:absolute; left:var(--space-10); bottom:var(--space-10); max-width:440px; }
+  .name { margin:0; font-size:120px; line-height:.9; font-weight:700; letter-spacing:-.035em; color:var(--ink); }
+  .tag { margin:var(--space-3) 0 0 6px; font-size:14px; line-height:20px; color:var(--ink-2); }
+</style>
+</head>
+<body>
+<div class="cover">
+<div class="art" aria-hidden="true">
+<svg viewBox="0 0 480 288" width="480" height="288">
+<!--
+  blocks      primary 120×216 bled off the top (the one ink) · lilac-tint 176×152 (Clio AI, review) · amber-tint 152×120 bled off top-right · sage-tint 152×152 bled off the right · rose-tint 96×48 · amber-solid disc 24 (the streak flame) — ≈45% of 960×288
+  arrangement a staggered stack of pastel note-group containers around one ink slab, bottoms on space-6 and space-10 lines, space-4 gutters
+  pattern     notebook ruling from "read in serif" / ruled NotebookPage: four paper-rule hairlines at a space-8 pitch crossing the lilac and sage groups, one paper-margin rule down the lilac block
+  scales      sides in space-4/space-8 multiples; gutters space-4; rule pitch space-8 (32px, the notebook lineSpacing); corners radius-lg, rose chip radius-md, disc rx half its side
+-->
+<rect class="ink blk" x="16" y="-24" width="120" height="240" rx="18"/>
+<rect class="lilac blk" x="152" y="40" width="176" height="176" rx="18"/>
+<rect class="amber blk" x="344" y="-24" width="152" height="136" rx="18"/>
+<rect class="sage blk" x="344" y="128" width="152" height="184" rx="18"/>
+<rect class="rose chip" x="152" y="232" width="96" height="40" rx="12"/>
+<rect class="flame" x="264" y="240" width="24" height="24" rx="12"/>
+<line class="rule" x1="152" y1="88" x2="328" y2="88"/>
+<line class="rule" x1="152" y1="120" x2="328" y2="120"/>
+<line class="rule" x1="152" y1="152" x2="328" y2="152"/>
+<line class="rule" x1="152" y1="184" x2="328" y2="184"/>
+<line class="rule" x1="344" y1="184" x2="496" y2="184"/>
+<line class="rule" x1="344" y1="216" x2="496" y2="216"/>
+<line class="rule" x1="344" y1="248" x2="496" y2="248"/>
+<line class="margin" x1="184" y1="40" x2="184" y2="216"/>
+</svg>
+</div>
+<div class="words">
+<h1 class="name">Clio</h1>
+<p class="tag">A quiet research notebook: papers, ink, tasks and an AI that reads along.</p>
+</div>
+</div>
+</body>
+</html>

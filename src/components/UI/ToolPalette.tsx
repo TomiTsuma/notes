@@ -1,143 +1,94 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../../store/appStore';
-import { LassoIcon, RulerIcon, StickyIcon, UndoIcon } from '../Layout/FloatingToolbar';
-import { PenIcon, HighlighterIcon, TextIcon, EraserIcon } from './Icons';
-import './RadialToolMenu.css';
+import { ToolDock, ToolPopover, PEN_COLORS } from './clio';
+
+// The palette's swatches are design tokens ('pen-black'), but a stroke needs a real
+// colour: an invalid SVG stroke value resolves to `none`, so the ink never paints.
+const resolvePenToken = (token: string) =>
+  token.startsWith('#')
+    ? token
+    : getComputedStyle(document.documentElement).getPropertyValue(`--${token}`).trim() || token;
 
 const ToolPalette: React.FC = () => {
-  const { activeTool, setActiveTool, brushColor, setBrushColor, brushSize, setBrushSize, undo, activeView, palmRejection, togglePalmRejection } = useAppStore();
-  const [expanded, setExpanded] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
+  const {
+    activeTool,
+    setActiveTool,
+    brushColor,
+    setBrushColor,
+    brushSize,
+    setBrushSize,
+    undo,
+    clearAnnotations,
+    activeDocumentId,
+    activeView,
+    addNotebookPage,
+    palmRejection,
+  } = useAppStore();
+
+  const [showPopover, setShowPopover] = useState(false);
+  const swatchToken = PEN_COLORS.find((t) => resolvePenToken(t) === brushColor) ?? brushColor;
 
   if (activeView !== 'canvas') return null;
 
-  const colors = ['#1c1c1e', '#e24361', '#34c759', '#007aff', '#ff9500', '#af52de'];
-
-  const mainTools = [
-    { id: 'select', label: 'Select', icon: <LassoIcon /> },
-    { id: 'text', label: 'Text', icon: <TextIcon /> },
-    { id: 'sticky', label: 'Sticky', icon: <StickyIcon /> },
-    { id: 'pen', label: 'Pen', icon: <PenIcon /> },
-    { id: 'highlighter', label: 'Highlighter', icon: <HighlighterIcon /> },
-    { id: 'ruler', label: 'Ruler', icon: <RulerIcon /> },
-    { id: 'eraser', label: 'Eraser', icon: <EraserIcon /> },
-  ] as const;
-
-  const handleToolClick = (id: string) => {
-    if (id === 'undo') {
-      undo();
-      return;
+  const handleSelectTool = (toolId: string) => {
+    setActiveTool(toolId as any);
+    if (['pen', 'pencil', 'highlighter'].includes(toolId)) {
+      setShowPopover((prev) => !prev);
+    } else {
+      setShowPopover(false);
     }
-    setActiveTool(id as typeof activeTool);
-    setShowSettings(id === 'pen' || id === 'highlighter');
-    setExpanded(false);
   };
 
-  // Semicircle above the FAB (bottom-center layout)
-  // Arc from ~195° to ~345° in radians, creating an upward fan
-  const radius = 120;
-  const startAngle = Math.PI + 0.26;   // ~195° — slightly below left horizontal
-  const endAngle = 2 * Math.PI - 0.26; // ~345° — slightly below right horizontal
-  const step = mainTools.length > 1 ? (endAngle - startAngle) / (mainTools.length - 1) : 0;
+  const handleClear = () => {
+    if (activeDocumentId && confirm('Clear all annotations on this page?')) {
+      clearAnnotations(activeDocumentId);
+    }
+  };
 
-  const polarPosition = (angle: number) => ({
-    x: Math.cos(angle) * radius,
-    y: Math.sin(angle) * radius,
-  });
-
-  // Undo sits just past the last tool, slightly to the right
-  const undoAngle = endAngle + 0.32;
-  const undoPos = polarPosition(undoAngle);
+  const handleAddPage = () => {
+    if (activeDocumentId) {
+      addNotebookPage(activeDocumentId);
+    }
+  };
 
   return (
-    <div className="radial-fab-container">
-      {expanded && <div className="radial-fab-backdrop" onClick={() => { setExpanded(false); setShowSettings(false); }} />}
-      <div className={`radial-fab-scrim ${expanded ? 'visible' : ''}`} />
-
-      <div className="radial-tool-orbit">
-        {mainTools.map((tool, i) => {
-          const { x, y } = polarPosition(startAngle + step * i);
-          const isSelected = activeTool === tool.id;
-          return (
-            <button
-              key={tool.id}
-              className={`radial-tool-btn ${expanded ? 'visible' : ''} ${isSelected ? 'active' : ''}`}
-              style={{
-                ['--tx' as string]: `${x}px`,
-                ['--ty' as string]: `${y}px`,
-                transitionDelay: expanded ? `${i * 30}ms` : '0ms',
-                zIndex: 10 + i,
-              }}
-              onClick={() => handleToolClick(tool.id)}
-              title={tool.label}
-            >
-              {tool.icon}
-            </button>
-          );
-        })}
-        <button
-          className={`radial-tool-btn ${expanded ? 'visible' : ''}`}
-          style={{
-            ['--tx' as string]: `${undoPos.x}px`,
-            ['--ty' as string]: `${undoPos.y}px`,
-            transitionDelay: expanded ? `${mainTools.length * 30}ms` : '0ms',
-            zIndex: 20,
-          }}
-          onClick={() => handleToolClick('undo')}
-          title="Undo"
-        >
-          <UndoIcon />
-        </button>
-      </div>
-
-      {showSettings && (activeTool === 'pen' || activeTool === 'highlighter') && (
-        <div className="radial-settings-panel">
-          <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-secondary)', marginBottom: 8, letterSpacing: '0.05em' }}>COLOR</div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
-            {colors.map(c => (
-              <button key={c} className="radial-color-swatch" onClick={() => { setBrushColor(c); setShowSettings(false); }}
-                style={{
-                  width: 24, height: 24, borderRadius: '50%', background: c, cursor: 'pointer',
-                  border: brushColor === c ? '2.5px solid var(--accent-color)' : '1px solid rgba(0,0,0,0.08)',
-                  boxShadow: brushColor === c ? '0 0 0 2px rgba(10,122,255,0.2)' : 'none',
-                }} />
-            ))}
-          </div>
-          {(activeTool === 'pen' || activeTool === 'highlighter') && (
-            <>
-              <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-secondary)', marginBottom: 6, letterSpacing: '0.05em' }}>
-                SIZE <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{activeTool === 'highlighter' ? brushSize * 3 : brushSize}px</span>
-              </div>
-              <input type="range" min={2} max={16} value={brushSize} onChange={e => setBrushSize(Number(e.target.value))} />
-              <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-secondary)', letterSpacing: '0.05em' }}>PALM REJECTION</span>
-                <button
-                  onClick={togglePalmRejection}
-                  style={{
-                    width: 36, height: 20, borderRadius: 10, border: 'none', cursor: 'pointer', padding: 0,
-                    background: palmRejection ? 'var(--accent-color)' : 'var(--border-color)',
-                    position: 'relative', transition: 'background 0.2s ease',
-                  }}
-                >
-                  <span style={{
-                    position: 'absolute', top: 2, left: palmRejection ? 18 : 2,
-                    width: 16, height: 16, borderRadius: '50%', background: 'white',
-                    transition: 'left 0.2s ease', boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
-                  }} />
-                </button>
-              </div>
-            </>
-          )}
+    <div
+      style={{
+        position: 'absolute',
+        bottom: 24,
+        left: 0,
+        right: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 12,
+        pointerEvents: 'none',
+        zIndex: 50,
+      }}
+    >
+      {showPopover && (
+        <div style={{ pointerEvents: 'auto', marginBottom: 4 }}>
+          <ToolPopover
+            tool={activeTool}
+            size={brushSize}
+            color={swatchToken}
+            palmRejection={palmRejection}
+            onSizeChange={(s) => setBrushSize(s)}
+            onColorChange={(c) => setBrushColor(resolvePenToken(c))}
+          />
         </div>
       )}
 
-      <button
-        className={`radial-fab-main ${expanded ? 'open' : ''}`}
-        onClick={() => setExpanded(!expanded)}
-        title="Tools"
-      >
-        <PenIcon />
-      </button>
+      <div style={{ pointerEvents: 'auto' }}>
+        <ToolDock
+          active={activeTool}
+          color={swatchToken}
+          onSelect={handleSelectTool}
+          onUndo={undo}
+          onClear={handleClear}
+          onAddPage={handleAddPage}
+        />
+      </div>
     </div>
   );
 };

@@ -1,5 +1,8 @@
+@import './clio-tokens.css';
+@import './clio-bundle.css';
+
 :root {
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro", "SF Pro Text", "SF Pro Display", system-ui, sans-serif;
+  font-family: var(--font-sans);
   line-height: 1.47059;
   font-weight: 400;
   font-synthesis: none;
@@ -14,8 +17,7 @@
   padding: 0;
 }
 
-/* iOS Safari: 100vh includes the browser chrome, which collapses the layout.
-   Using height:100% on html/body lets the browser report the real usable height. */
+/* iOS Safari & full window layout */
 html {
   width: 100%;
   height: 100%;
@@ -26,11 +28,13 @@ body {
   margin: 0;
   width: 100%;
   height: 100%;
-  /* Fallback for older iOS that misreports height */
   min-height: -webkit-fill-available;
   overflow: hidden;
   user-select: none;
   -webkit-user-select: none;
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-sans);
 }
 
 #root {
@@ -40,23 +44,24 @@ body {
   flex-direction: row;
 }
 
-/* Modern clean scrollbars — themed via app-container tokens */
-.app-container ::-webkit-scrollbar {
+/* Modern clean scrollbars */
+::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
-.app-container ::-webkit-scrollbar-track {
+::-webkit-scrollbar-track {
   background: transparent;
 }
-.app-container ::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb);
+::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
   border-radius: 3px;
+  opacity: 0.5;
 }
-.app-container ::-webkit-scrollbar-thumb:hover {
-  background: var(--scrollbar-thumb-hover);
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ink-2);
 }
 
-/* Apple HIG Liquid Glass & Backdrop Layering */
+/* Backdrop Layering */
 .app-backdrop {
   position: fixed;
   inset: 0;
@@ -72,103 +77,24 @@ body {
   opacity: 0;
 }
 
-/* Adaptive dimming scrim to preserve WCAG contrast against rich wallpapers (materials.md) */
+/* Adaptive dimming scrim for wallpapers */
 .app-backdrop-blur {
   position: fixed;
   inset: 0;
-  background: rgba(245, 245, 247, 0.45);
+  background: rgba(245, 242, 236, 0.45);
   backdrop-filter: blur(24px) saturate(140%);
   -webkit-backdrop-filter: blur(24px) saturate(140%);
   z-index: 1;
   pointer-events: none;
 }
 
-.app-container.dark .app-backdrop-blur {
-  background: rgba(14, 14, 16, 0.65);
+.dark .app-backdrop-blur, [data-theme="dark"] .app-backdrop-blur {
+  background: rgba(15, 14, 13, 0.7);
   backdrop-filter: blur(28px) saturate(130%);
   -webkit-backdrop-filter: blur(28px) saturate(130%);
 }
 
-.glass-card {
-  background: var(--glass-bg);
-  backdrop-filter: blur(24px) saturate(160%);
-  -webkit-backdrop-filter: blur(24px) saturate(160%);
-  border: 1px solid var(--glass-border);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 6px 24px var(--shadow-md);
-  border-radius: 12px;
-  transition: background 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
-  color: var(--text-primary);
-}
-
-.glass-card-hover:hover {
-  background: var(--bg-surface);
-  box-shadow: 0 2px 6px rgba(0,0,0,0.06), 0 10px 32px var(--shadow-md);
-  border: 1px solid var(--border-color);
-}
-
-/* Apple Native Segmented Control */
-.apple-segmented-control {
-  display: inline-flex;
-  align-items: center;
-  background: var(--bg-inset);
-  padding: 3px;
-  border-radius: 8px;
-  border: 1px solid var(--border-subtle);
-  position: relative;
-  user-select: none;
-  gap: 2px;
-}
-.apple-segmented-item {
-  padding: 4px 12px;
-  font-size: 13px;
-  font-weight: 500;
-  border-radius: 6px;
-  border: none;
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  min-height: 28px;
-}
-.apple-segmented-item:hover {
-  color: var(--text-primary);
-}
-.apple-segmented-item.active {
-  background: var(--bg-surface-solid);
-  color: var(--text-primary);
-  font-weight: 600;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.06);
-}
-
-/* Custom view containers — flex: 1 so it fills whatever height the parent flex column gives it.
-   Avoids 100vh calculations which are incorrect on iOS Safari. */
-.workspace-view-container {
-  padding: 40px;
-  overflow-y: auto;
-  flex: 1;
-  min-height: 0;
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  color: var(--text-primary);
-}
-
-/* Button & interactive animations — intentional, not bouncy */
-.btn-animate {
-  transition: background 0.15s ease, color 0.15s ease;
-}
-.btn-animate:hover {
-  background: var(--bg-hover);
-}
-.btn-animate:active {
-  opacity: 0.8;
-}
-
-/* ── View transition ──────────────────────────────────────────────────── */
+/* View transition */
 .view-enter {
   animation: viewEnter 0.38s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
@@ -186,7 +112,6 @@ body {
   to   { opacity: 0; }
 }
 
-/* Wrapper that must stretch to fill available space */
 .view-wrapper {
   flex: 1;
   display: flex;
@@ -195,77 +120,9 @@ body {
   min-height: 0;
 }
 
-/* ── Section / card staggered reveal ─────────────────────────────────── */
-@keyframes sectionReveal {
-  from { opacity: 0; transform: translateY(18px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-.workspace-view-container > * {
-  animation: sectionReveal 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-.workspace-view-container > *:nth-child(1) { animation-delay: 40ms; }
-.workspace-view-container > *:nth-child(2) { animation-delay: 100ms; }
-.workspace-view-container > *:nth-child(3) { animation-delay: 160ms; }
-.workspace-view-container > *:nth-child(4) { animation-delay: 220ms; }
-.workspace-view-container > *:nth-child(5) { animation-delay: 280ms; }
-.workspace-view-container > *:nth-child(6) { animation-delay: 340ms; }
-
-/* Cards within a section grid also stagger */
-@keyframes cardReveal {
-  from { opacity: 0; transform: translateY(12px) scale(0.98); }
-  to   { opacity: 1; transform: translateY(0)    scale(1); }
-}
-
-.workspace-view-container .glass-card {
-  animation: cardReveal 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-.workspace-view-container .glass-card:nth-child(1) { animation-delay: 80ms; }
-.workspace-view-container .glass-card:nth-child(2) { animation-delay: 150ms; }
-.workspace-view-container .glass-card:nth-child(3) { animation-delay: 220ms; }
-.workspace-view-container .glass-card:nth-child(4) { animation-delay: 290ms; }
-.workspace-view-container .glass-card:nth-child(5) { animation-delay: 360ms; }
-.workspace-view-container .glass-card:nth-child(6) { animation-delay: 430ms; }
-
-/* ── Sidebar nav items stagger ────────────────────────────────────────── */
-@keyframes navItemReveal {
-  from { opacity: 0; transform: translateX(-10px); }
-  to   { opacity: 1; transform: translateX(0); }
-}
-
-.sidebar-nav-item {
-  animation: navItemReveal 0.32s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-.sidebar-nav-item:nth-child(1) { animation-delay: 60ms; }
-.sidebar-nav-item:nth-child(2) { animation-delay: 110ms; }
-.sidebar-nav-item:nth-child(3) { animation-delay: 160ms; }
-.sidebar-nav-item:nth-child(4) { animation-delay: 210ms; }
-.sidebar-nav-item:nth-child(5) { animation-delay: 260ms; }
-
-/* Respect OS reduce-motion preference — also prevents iOS Low Power Mode
-   from leaving animations stuck at opacity:0 */
 @media (prefers-reduced-motion: reduce) {
-  .view-enter, .view-exit,
-  .workspace-view-container > *,
-  .workspace-view-container .glass-card,
-  .sidebar-nav-item {
+  .view-enter, .view-exit, .cl * {
     animation: none !important;
-    opacity: 1 !important;
-    transform: none !important;
+    transition: none !important;
   }
 }
-
-/* Glass-card lift on hover */
-.glass-card-hover {
-  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1),
-              box-shadow 0.22s ease,
-              background 0.2s ease,
-              border-color 0.2s ease;
-}
-.glass-card-hover:hover {
-  transform: translateY(-2px);
-  background: var(--bg-surface);
-  box-shadow: 0 2px 4px rgba(0,0,0,0.06), 0 12px 36px var(--shadow-md);
-  border: 1px solid var(--border-color);
-}
-

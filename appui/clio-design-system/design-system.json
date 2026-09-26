@@ -1,0 +1,63 @@
+{
+ "v": 3,
+ "layout": "files",
+ "createdOnFiles": {
+  "v": 1,
+  "at": "2026-09-25T13:34:20Z"
+ },
+ "title": "Clio",
+ "namespace": "Clio",
+ "libraries": [
+  {
+   "name": "react",
+   "version": "18.3.1",
+   "global": "React",
+   "file": "components/lib/react.production.min.js"
+  },
+  {
+   "name": "react-dom",
+   "version": "18.3.1",
+   "global": "ReactDOM",
+   "file": "components/lib/react-dom.production.min.js"
+  }
+ ],
+ "sections": {},
+ "groups": [
+  "Logos"
+ ],
+ "assetGroups": {
+  "Logos": {
+   "name": "Logos",
+   "tile": "l",
+   "order": [
+    "clio-wordmark-ink.png",
+    "clio-wordmark-paper.png"
+   ],
+   "files": {
+    "clio-wordmark-ink.png": {
+     "name": "clio-wordmark-ink.png",
+     "blob": "48862c486b7814c25c7d20b73dfd3ee6",
+     "size": 34185,
+     "type": "image/png"
+    },
+    "clio-wordmark-paper.png": {
+     "name": "clio-wordmark-paper.png",
+     "blob": "1e724baa501fc0a4d6955d6f4cf82e5f",
+     "size": 34114,
+     "type": "image/png"
+    }
+   }
+  }
+ },
+ "blobs": {},
+ "docs": {
+  "readme": "project/README.md",
+  "sections": []
+ },
+ "lastChange": {
+  "by": "Thomas",
+  "at": "2026-09-25T13:34:20Z",
+  "via": "Claude (Cowork)",
+  "note": "Clio redesign: tokens, 42 components, 8 page showcases, cover \u2014 built from the appui references and the Clio codebase."
+ }
+}

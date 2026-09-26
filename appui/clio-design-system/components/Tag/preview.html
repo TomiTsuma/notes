@@ -1,0 +1,12 @@
+<!-- @dsCard group="Status" height=100 -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Tag — Clio</title>
+<style>html,body{margin:0;background:var(--surface);}#root{padding:20px;}</style>
+</head>
+<body>
+<div id="root" class="cl"></div>
+<script>(()=>{var o=window.Clio,a=e=>window.ReactDOM.createRoot(document.getElementById("root")).render(e);a(React.createElement("div",{className:"cl-col",style:{gap:10}},React.createElement("div",{className:"cl-row",style:{gap:6}},["rose","sky","sage","amber","lilac","stone"].map(e=>React.createElement(o.Tag,{key:e,tone:e},"#",e))),React.createElement("div",{className:"cl-row",style:{gap:6}},React.createElement(o.Tag,{tone:"lilac",onRemove:()=>{}},"#diffusion"),React.createElement(o.Tag,{tone:"sky",icon:"pencil"},"3 notes"),React.createElement(o.Tag,{outline:!0},"Draft"))));})();
+</script>
+</body>
+</html>

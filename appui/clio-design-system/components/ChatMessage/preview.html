@@ -1,0 +1,12 @@
+<!-- @dsCard group="AI" height=470 -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>ChatMessage — Clio</title>
+<style>html,body{margin:0;background:var(--surface);}#root{padding:20px;}</style>
+</head>
+<body>
+<div id="root" class="cl"></div>
+<script>(()=>{var e=window.Clio,t=r=>window.ReactDOM.createRoot(document.getElementById("root")).render(r);var o="GVT compresses molecular graphs into discrete codes with a graph VQ-VAE, then models the code sequence with a Transformer \u2014 generating valid molecules far faster than diffusion baselines.";t(React.createElement("div",{style:{background:"var(--ai-wash)",padding:20,borderRadius:18,maxWidth:400},className:"cl-col"},React.createElement(e.ChatMessage,{role:"user"},"What makes GVT faster than diffusion baselines?"),React.createElement(e.ChatMessage,{thought:"Thought for 6 seconds"},React.createElement("h3",null,"Two reasons"),React.createElement("ul",null,React.createElement("li",null,o),React.createElement("li",null,"Sampling is a single autoregressive pass over ~",React.createElement("code",null,"64")," codes instead of hundreds of denoising steps."))),React.createElement(e.ChatMessage,{streaming:!0},"Section 5.2 reports 40\xD7 fewer network evaluations")));})();
+</script>
+</body>
+</html>

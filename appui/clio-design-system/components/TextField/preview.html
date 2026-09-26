@@ -1,0 +1,12 @@
+<!-- @dsCard group="Inputs" height=250 -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>TextField — Clio</title>
+<style>html,body{margin:0;background:var(--surface);}#root{padding:20px;}</style>
+</head>
+<body>
+<div id="root" class="cl"></div>
+<script>(()=>{var e=window.Clio,l=t=>window.ReactDOM.createRoot(document.getElementById("root")).render(t);l(React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,maxWidth:640}},React.createElement(e.TextField,{label:"Project name",placeholder:"e.g. Molecular Research"}),React.createElement(e.TextField,{label:"arXiv id or URL",defaultValue:"2512.02667",mono:!0,hint:"IDs, arxiv: links and abs/ URLs all work."}),React.createElement(e.TextField,{label:"Description",multiline:!0,placeholder:"Optional description detailing aims\u2026"}),React.createElement(e.TextField,{label:"Server URL",defaultValue:"cloud.example",error:"Enter a full URL starting with https://"})));})();
+</script>
+</body>
+</html>

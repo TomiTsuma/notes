@@ -21,6 +21,10 @@ export default defineConfig({
         target: 'http://localhost:3001',
         changeOrigin: true,
       },
+      '/api/arxiv': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      },
       '/api/ollama': {
         target: 'http://100.101.70.112',
         changeOrigin: true,

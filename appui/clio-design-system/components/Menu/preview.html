@@ -1,0 +1,12 @@
+<!-- @dsCard group="Overlays" height=330 -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Menu — Clio</title>
+<style>html,body{margin:0;background:var(--surface);}#root{padding:20px;}</style>
+</head>
+<body>
+<div id="root" class="cl"></div>
+<script>(()=>{var e=window.Clio,o=t=>window.ReactDOM.createRoot(document.getElementById("root")).render(t);o(React.createElement("div",{className:"cl-row",style:{alignItems:"flex-start",gap:32}},React.createElement(e.Menu,{items:[{icon:"folder",label:"Open"},{icon:"pencil",label:"Rename",shortcut:"F2"},{icon:"tag",label:"Manage tags"},{icon:"hub",label:"Move to project\u2026"},{icon:"download",label:"Download"},"-",{icon:"trash",label:"Delete",danger:!0}]}),React.createElement("div",{style:{paddingTop:30}},React.createElement(e.Tooltip,{shortcut:"\u2318J"},"Share feedback"))));})();
+</script>
+</body>
+</html>

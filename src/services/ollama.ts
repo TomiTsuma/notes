@@ -147,16 +147,21 @@ Generate a highly specific, densely informative technical summary strictly answe
 
 export async function generateOllamaChatStream(
   messages: { role: 'user' | 'assistant'; content: string }[],
-  contextText: string,
+  paperText: string,
   onChunk: (chunk: string) => void
 ): Promise<string> {
-  const historyPrompt = messages.map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n');
+  const historyPrompt = messages
+    .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
+    .join('\n\n');
 
-  const fullPrompt = `You are a helpful, brilliant AI coding and research assistant integrated into the TomiTsuma Notes workspace. Help the user with their queries. You can reference details from the document context if relevant.
+  const paperContextBlock = paperText.trim()
+    ? `<PaperContentsFormatTxt>\n${paperText.slice(0, 45000)}\n</PaperContentsFormatTxt>`
+    : `<PaperContentsFormatTxt>\nNo paper document context loaded.\n</PaperContentsFormatTxt>`;
 
-<DocumentContext>
-${contextText.slice(0, 30000)}
-</DocumentContext>
+  const fullPrompt = `System: You are Clio AI, an expert academic research assistant embedded in TomiTsuma Notes.
+The primary system prompt context for this session is the active paper contents in text format. You MUST answer all questions accurately, directly, and strictly based on the provided paper contents.
+
+${paperContextBlock}
 
 <ConversationHistory>
 ${historyPrompt}

@@ -1,0 +1,12 @@
+<!-- @dsCard group="Canvas" height=400 -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>NotebookPage — Clio</title>
+<style>html,body{margin:0;background:var(--canvas);}#root{padding:0;}</style>
+</head>
+<body>
+<div id="root" class="cl"></div>
+<script>(()=>{var e=window.Clio,t=o=>window.ReactDOM.createRoot(document.getElementById("root")).render(o);t(React.createElement("div",{style:{background:"var(--surface-inset)",padding:20,borderRadius:16}},React.createElement("div",{className:"cl-tagbar",style:{borderRadius:10,marginBottom:16,border:"1px solid var(--line)"}},React.createElement(e.Icon,{name:"tag",size:15,className:"cl-faint"}),React.createElement(e.Tag,{tone:"lilac",onRemove:()=>{}},"#diffusion"),React.createElement("button",{className:"add"},React.createElement(e.Icon,{name:"plus",size:12}),"Add tag")),React.createElement(e.NotebookPage,{width:520,height:300,page:"3 / 7"},React.createElement("span",{className:"cl-page-text",style:{left:84,top:31}},"Noise schedule \u2014 cosine vs linear?"),React.createElement("svg",{width:"520",height:"300"},React.createElement("path",{d:"M84 110 C 150 96, 220 124, 300 104 S 420 100, 460 112",fill:"none",stroke:"var(--pen-cobalt)",strokeWidth:"2.4",strokeLinecap:"round"}),React.createElement("path",{d:"M84 150 h210",stroke:"var(--marker-yellow)",strokeWidth:"18",strokeLinecap:"round"}),React.createElement("path",{d:"M310 190 l40 40 M350 190 l-40 40",stroke:"var(--pen-red)",strokeWidth:"2.2",strokeLinecap:"round"})),React.createElement("span",{className:"cl-page-text",style:{left:84,top:127}},"GVT: codebook 512, 64 tokens"),React.createElement("div",{className:"cl-page-sticky w-amber",style:{left:360,top:180}},"Check ablation in table 6"))));})();
+</script>
+</body>
+</html>

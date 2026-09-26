@@ -1,0 +1,12 @@
+<!-- @dsCard group="AI" height=720 -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>AIPanel — Clio</title>
+<style>html,body{margin:0;background:var(--surface);}#root{padding:20px;}</style>
+</head>
+<body>
+<div id="root" class="cl"></div>
+<script>(()=>{var e=window.Clio,a=t=>window.ReactDOM.createRoot(document.getElementById("root")).render(t);var o="GVT compresses molecular graphs into discrete codes with a graph VQ-VAE, then models the code sequence with a Transformer \u2014 generating valid molecules far faster than diffusion baselines.";a(React.createElement("div",{style:{height:700,display:"flex",border:"1px solid var(--line)",borderRadius:16,overflow:"hidden",width:382}},React.createElement(e.AIPanel,{file:"Graph VQ-Transformer (GVT).pdf"},t=>t==="chat"?React.createElement(React.Fragment,null,React.createElement(e.ChatMessage,{role:"user"},"Summarise the method in two lines."),React.createElement(e.ChatMessage,{thought:"Thought for 4 seconds"},React.createElement("p",null,o))):e.SMART_PROMPTS.slice(0,5).map((r,i)=>React.createElement(e.SmartNote,{key:r,title:r,status:i===0?"done":i===1?"loading":"idle"},React.createElement("p",null,o))))));})();
+</script>
+</body>
+</html>

@@ -20,7 +20,7 @@ const calculateNextStreak = (currentStreak: number, lastActiveDate: string, toda
   }
 };
 
-export type ToolType = 'pen' | 'highlighter' | 'text' | 'eraser' | 'sticky' | 'select' | 'ruler';
+export type ToolType = 'pen' | 'pencil' | 'highlighter' | 'text' | 'eraser' | 'sticky' | 'select' | 'ruler';
 
 export interface TextElement {
   id: string;
@@ -319,7 +319,7 @@ export const useAppStore = create<AppState>()((set) => ({
       activeDocumentId: defaultPaperId,
       annotations: {},
       isRecording: false,
-      showRightPanel: false,
+      showRightPanel: true,
       
       papers: [
         { id: '1', title: 'Attention Is All You Need', authors: 'Vaswani et al.' },
@@ -450,10 +450,14 @@ export const useAppStore = create<AppState>()((set) => ({
 
       setStrokes: (docId, strokesFn) => set(state => {
         const docAnn = state.annotations[docId] || { strokes: [], textElements: [] };
+        const nextStrokes = strokesFn(docAnn.strokes);
+        // Returning the same state object skips the notification entirely, so a drag
+        // that erases nothing does not re-render every canvas.
+        if (nextStrokes === docAnn.strokes) return state;
         return {
           annotations: {
             ...state.annotations,
-            [docId]: { ...docAnn, strokes: strokesFn(docAnn.strokes) }
+            [docId]: { ...docAnn, strokes: nextStrokes }
           }
         };
       }),

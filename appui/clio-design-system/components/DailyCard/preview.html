@@ -1,0 +1,12 @@
+<!-- @dsCard group="Cards" height=420 -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>DailyCard — Clio</title>
+<style>html,body{margin:0;background:var(--surface);}#root{padding:20px;}</style>
+</head>
+<body>
+<div id="root" class="cl"></div>
+<script>(()=>{var e=window.Clio,o=r=>window.ReactDOM.createRoot(document.getElementById("root")).render(r);var t=[{id:"t1",text:"Read GVT section 4 (sampling)",completed:!0,dueTime:"09:00"},{id:"t2",text:"Annotate EDM results table",completed:!0},{id:"t3",text:"Send extraction sheet to Mirriam",completed:!1,dueTime:"14:30",soon:!0},{id:"t4",text:"Draft discussion outline",completed:!1,dueTime:"17:00"}];o(React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,alignItems:"start"}},React.createElement(e.DailyCard,{date:"2026-09-25",tasksTitle:"Today",tasks:t,showAdd:!0,footer:"4 tasks \xB7 2 done"}),React.createElement(e.DailyCard,{date:"2026-09-24",icon:"edit3",prose:React.createElement("span",null,React.createElement("em",null,"Slightly better focus.")," Finished the screening pass and flagged 12 papers for extraction."),tasksTitle:"Tasks for tomorrow",tasks:t.slice(2),tag:"review"})));})();
+</script>
+</body>
+</html>

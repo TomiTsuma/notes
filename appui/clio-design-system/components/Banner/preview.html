@@ -1,0 +1,12 @@
+<!-- @dsCard group="Feedback" height=200 -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Banner — Clio</title>
+<style>html,body{margin:0;background:var(--surface);}#root{padding:20px;}</style>
+</head>
+<body>
+<div id="root" class="cl"></div>
+<script>(()=>{var e=window.Clio,t=n=>window.ReactDOM.createRoot(document.getElementById("root")).render(n);t(React.createElement("div",{className:"cl-col",style:{gap:10}},React.createElement(e.Banner,{tone:"ai",title:"Clio AI is connected.",action:React.createElement(e.Button,{size:"sm"},"Open chat")},"Summaries and chat use gemma4 running locally."),React.createElement(e.Banner,{tone:"danger",title:"Sync error:",action:React.createElement(e.Button,{size:"sm",variant:"secondary"},"Retry")},"Nextcloud returned 401. Uploads are queued on this device."),React.createElement(e.Banner,{tone:"success",title:"Imported."},"arXiv 2512.02667 saved to Papers.")));})();
+</script>
+</body>
+</html>
