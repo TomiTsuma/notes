@@ -1,17 +1,18 @@
-version: '3.8'
-
 services:
   clio:
     build: .
     image: ttsu/chlio
     container_name: clio-app
     ports:
-      - "4191:4191"
+      - "${PORT:-4191}:${PORT:-4191}"
     restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
     environment:
       - NODE_ENV=production
       - CLIO_DATA_DIR=/data
-      - PORT=4191
+      - PORT=${PORT:-4191}
     volumes:
       - clio-data:/data
 

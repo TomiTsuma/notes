@@ -187,7 +187,7 @@ export const VIEWS = [
   { id: 'calendar', label: 'Calendar', icon: 'calendar' },
   { id: 'canvas', label: 'Note Canvas', icon: 'canvas' },
 ];
-export function Sidebar({ activeView = 'home', projects = [], tree = [], tags = [], activeFileId, user = { name: 'Thomas', email: 'tommytsuma7@gmail.com' },
+export function Sidebar({ activeView = 'home', projects = [], tree = [], tags = [], activeFileId, user = { name: 'User', email: 'user@example.com' },
   sync = 'connected', logoLight, logoDark, onNavigate, counts = {} }) {
   const syncLabel = { connected: 'Nextcloud synced', connecting: 'Connecting…', failed: 'Sync failed — retry', idle: 'Nextcloud not connected' }[sync];
   const syncCls = { connected: '', connecting: 'is-busy', failed: 'is-fail', idle: 'is-off' }[sync];

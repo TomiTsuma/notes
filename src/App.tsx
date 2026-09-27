@@ -48,9 +48,13 @@ function App() {
   const transitionRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pdfInputRef = useRef<HTMLInputElement>(null);
 
-  // Keep sidebar visible by default on launch
+  // Keep sidebar visible by default on launch and handle Google OAuth redirect
   useEffect(() => {
     setShowSidebar(true);
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('code') || params.get('google_connected')) {
+      setActiveView('calendar');
+    }
   }, []);
 
   useEffect(() => {
@@ -242,7 +246,10 @@ function App() {
             tree={fileTree}
             tags={tags.map((t) => ({ name: t.name, color: t.color }))}
             activeFileId={activeDocumentId || undefined}
-            user={{ name: 'Thomas', email: 'tommytsuma7@gmail.com' }}
+            user={{
+              name: import.meta.env.VITE_USER_NAME || 'User',
+              email: import.meta.env.VITE_USER_EMAIL || 'user@example.com',
+            }}
             sync={nextcloudConnected ? 'connected' : nextcloudStatus === 'connecting' ? 'connecting' : 'idle'}
             onNavigate={(v) => setActiveView(v as any)}
             onToggleSidebar={() => setShowSidebar(false)}

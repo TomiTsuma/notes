@@ -99,6 +99,17 @@ export interface Project {
   description: string;
   color: string;
   createdAt: string;
+  jiraKey?: string;
+  jiraId?: string;
+  jiraUrl?: string;
+  isJira?: boolean;
+}
+
+export interface TaskComment {
+  id: string;
+  author: string;
+  body: string;
+  created: string;
 }
 
 export interface KanbanTask {
@@ -110,6 +121,10 @@ export interface KanbanTask {
   priority: 'low' | 'medium' | 'high';
   dueDate?: string;
   createdAt: string;
+  jiraKey?: string;
+  jiraUrl?: string;
+  jiraStatusName?: string;
+  comments?: TaskComment[];
 }
 
 export type CalendarViewMode = 'day' | 'week' | 'month';
@@ -125,6 +140,9 @@ export interface CalendarEvent {
   color?: string;
   completed?: boolean;
   createdAt: string;
+  source?: 'clio' | 'google' | 'ics';
+  googleEventId?: string;
+  htmlLink?: string;
 }
 
 export interface ChatMessage {
@@ -242,12 +260,16 @@ export interface AppState {
   addProject: (project: Project) => void;
   deleteProject: (id: string) => void;
   updateProject: (id: string, project: Partial<Project>) => void;
+  mergeJiraProjects: (projects: { id: string; key: string; name: string; avatarUrl?: string }[], host?: string) => void;
   addKanbanTask: (task: KanbanTask) => void;
   updateKanbanTask: (id: string, task: Partial<KanbanTask>) => void;
   deleteKanbanTask: (id: string) => void;
+  mergeJiraTasks: (tasks: KanbanTask[]) => void;
+  addTaskComment: (taskId: string, comment: TaskComment) => void;
   addCalendarEvent: (event: CalendarEvent) => void;
   updateCalendarEvent: (id: string, event: Partial<CalendarEvent>) => void;
   deleteCalendarEvent: (id: string) => void;
+  mergeExternalEvents: (events: CalendarEvent[], source: 'google' | 'ics') => void;
   addChatMessage: (docOrProjId: string, message: ChatMessage) => void;
   clearChatHistory: (docOrProjId: string) => void;
   rotateBackground: () => void;
@@ -288,7 +310,6 @@ export function getPersistedSnapshot(state: AppState): Record<string, unknown> {
     dailyTodos: state.dailyTodos,
     theme: state.theme,
     calendarViewMode: state.calendarViewMode,
-    selectedCalendarDate: state.selectedCalendarDate,
     projects: state.projects,
     kanbanTasks: state.kanbanTasks,
     calendarEvents: state.calendarEvents,
@@ -327,8 +348,8 @@ export const useAppStore = create<AppState>()((set) => ({
       ],
       tags: [],
       tagSearchQuery: '',
-      nextcloudUrl: 'http://100.100.133.10:30027',
-      nextcloudUsername: 'aeacus',
+      nextcloudUrl: import.meta.env.VITE_NEXTCLOUD_URL || '',
+      nextcloudUsername: import.meta.env.VITE_NEXTCLOUD_USERNAME || '',
       nextcloudConnected: false,
       nextcloudStatus: 'idle',
       nextcloudError: null,
@@ -339,7 +360,7 @@ export const useAppStore = create<AppState>()((set) => ({
       selectedProjectId: null,
       currentBackground: '/bkg1.jpeg',
       theme: 'light',
-      calendarViewMode: 'week',
+      calendarViewMode: 'day',
       selectedCalendarDate: new Date().toISOString().split('T')[0],
       projects: [
         { id: 'proj-1', name: 'Molecular Gene Research', description: 'Exploring Graph VQ-Transformer methods', color: '#0a7aff', createdAt: new Date().toISOString() },
@@ -611,6 +632,43 @@ export const useAppStore = create<AppState>()((set) => ({
       updateProject: (id, updated) => set(state => ({
         projects: state.projects.map(p => p.id === id ? { ...p, ...updated } : p)
       })),
+      mergeJiraProjects: (incoming, host) => set(state => {
+        const existingJiraMap = new Map(state.projects.filter(p => p.jiraKey).map(p => [p.jiraKey, p]));
+        const added: Project[] = [];
+        const updatedProjects = state.projects.map(p => {
+          if (p.jiraKey) {
+            const match = incoming.find(jp => jp.key === p.jiraKey);
+            if (match) {
+              return {
+                ...p,
+                name: p.name || match.name,
+                jiraId: match.id,
+                jiraUrl: host ? `https://${host}/browse/${match.key}` : p.jiraUrl,
+                isJira: true,
+              };
+            }
+          }
+          return p;
+        });
+
+        for (const jp of incoming) {
+          if (!existingJiraMap.has(jp.key)) {
+            added.push({
+              id: `proj-jira-${jp.key.toLowerCase()}`,
+              name: jp.name,
+              description: `Connected Jira Cloud Project (${jp.key}).`,
+              color: 'sky',
+              createdAt: new Date().toISOString(),
+              jiraKey: jp.key,
+              jiraId: jp.id,
+              jiraUrl: host ? `https://${host}/browse/${jp.key}` : undefined,
+              isJira: true,
+            });
+          }
+        }
+
+        return { projects: [...updatedProjects, ...added] };
+      }),
       addKanbanTask: (task) => set(state => ({ kanbanTasks: [...state.kanbanTasks, task] })),
       updateKanbanTask: (id, updated) => set(state => {
         const nextTasks = state.kanbanTasks.map(t => t.id === id ? { ...t, ...updated } : t);
@@ -635,11 +693,28 @@ export const useAppStore = create<AppState>()((set) => ({
         };
       }),
       deleteKanbanTask: (id) => set(state => ({ kanbanTasks: state.kanbanTasks.filter(t => t.id !== id) })),
+      mergeJiraTasks: (incoming) => set(state => {
+        const incomingKeySet = new Set(incoming.map(t => t.jiraKey || t.id));
+        const preserved = state.kanbanTasks.filter(t => !t.jiraKey && !incomingKeySet.has(t.id));
+        return { kanbanTasks: [...incoming, ...preserved] };
+      }),
+      addTaskComment: (taskId, comment) => set(state => ({
+        kanbanTasks: state.kanbanTasks.map(t => {
+          if (t.id === taskId || t.jiraKey === taskId) {
+            return { ...t, comments: [...(t.comments || []), comment] };
+          }
+          return t;
+        })
+      })),
       addCalendarEvent: (event) => set(state => ({ calendarEvents: [...state.calendarEvents, event] })),
       updateCalendarEvent: (id, updated) => set(state => ({
         calendarEvents: state.calendarEvents.map(e => e.id === id ? { ...e, ...updated } : e)
       })),
       deleteCalendarEvent: (id) => set(state => ({ calendarEvents: state.calendarEvents.filter(e => e.id !== id) })),
+      mergeExternalEvents: (incoming, source) => set(state => {
+        const preserved = state.calendarEvents.filter(e => e.source !== source);
+        return { calendarEvents: [...preserved, ...incoming] };
+      }),
       addChatMessage: (id, message) => set(state => {
         const currentChat = state.chatHistory[id] || [];
         return {

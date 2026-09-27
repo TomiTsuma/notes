@@ -18,7 +18,7 @@ const PERSIST_KEYS = [
   'nextcloudUrl', 'nextcloudUsername', 'nextcloudPapersPath', 'nextcloudSyncPath',
   'isRecording', 'showRightPanel',
   'activeView', 'selectedProjectId', 'currentBackground', 'theme',
-  'calendarViewMode', 'selectedCalendarDate',
+  'calendarViewMode',
   'projects', 'kanbanTasks', 'calendarEvents', 'chatHistory', 'userStreak',
 ];
 

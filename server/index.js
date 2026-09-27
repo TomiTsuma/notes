@@ -1,15 +1,42 @@
+import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
+dotenv.config();
+
 import express from 'express';
 import cors from 'cors';
 import multer from 'multer';
-import path from 'path';
 import fs from 'fs';
 import http from 'http';
 import https from 'https';
-import { fileURLToPath } from 'url';
 import { getBootstrap, putBootstrap, getFileContent, saveFileContent } from './bootstrap.js';
 import { deleteFileBlob } from './db.js';
+import {
+  getJiraConfig,
+  saveJiraConfig,
+  testJiraConnection,
+  getJiraProjects,
+  getJiraIssues,
+  createJiraIssue,
+  transitionJiraIssue,
+  addJiraComment,
+} from './jira.js';
+import {
+  getGoogleAuthUrl,
+  handleGoogleCallback,
+  exchangeGoogleCode,
+  getGoogleStatus,
+  clearGoogleTokens,
+  getGoogleCalendarEvents,
+  createGoogleCalendarEvent,
+  deleteGoogleCalendarEvent,
+} from './googleCalendar.js';
+import { generateIcsFeed, parseIcsContent } from './icsService.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = parseInt(process.env.PORT || '4191', 10);
 const DIST_DIR = process.env.CLIO_DIST_DIR || path.join(__dirname, '..', 'dist');
 
@@ -26,7 +53,7 @@ app.get('/api/health', (_req, res) => {
 // Nextcloud WebDAV Proxy
 app.use('/api/nextcloud', (req, res) => {
   const targetHeader = req.headers['x-nextcloud-target-url'];
-  const defaultTarget = process.env.NEXTCLOUD_URL || 'http://100.100.133.10:30027';
+  const defaultTarget = process.env.NEXTCLOUD_URL || 'http://localhost:8080';
   let targetUrlStr = (typeof targetHeader === 'string' && targetHeader.trim()) ? targetHeader.trim() : defaultTarget;
 
   if (!/^https?:\/\//i.test(targetUrlStr)) {
@@ -225,6 +252,261 @@ app.delete('/api/files/:id', (req, res) => {
   } catch (err) {
     console.error('DELETE file error:', err);
     res.status(500).json({ error: 'Failed to delete file' });
+  }
+});
+
+// ==========================================
+// Jira Integration Endpoints
+// ==========================================
+
+app.get('/api/jira/config', (_req, res) => {
+  try {
+    const config = getJiraConfig();
+    res.json({
+      host: config.host || '',
+      email: config.email || '',
+      hasToken: Boolean(config.apiToken),
+      projectKey: config.projectKey || '',
+      syncEnabled: Boolean(config.syncEnabled),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/jira/config', (req, res) => {
+  try {
+    const updated = saveJiraConfig(req.body);
+    res.json({
+      ok: true,
+      config: {
+        host: updated.host,
+        email: updated.email,
+        hasToken: Boolean(updated.apiToken),
+        projectKey: updated.projectKey,
+        syncEnabled: Boolean(updated.syncEnabled),
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/jira/test', async (_req, res) => {
+  try {
+    const user = await testJiraConnection();
+    res.json({ ok: true, user: { displayName: user.displayName, emailAddress: user.emailAddress, accountId: user.accountId } });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.get('/api/jira/projects', async (_req, res) => {
+  try {
+    const projects = await getJiraProjects();
+    res.json({ ok: true, projects });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/jira/issues', async (_req, res) => {
+  try {
+    const issues = await getJiraIssues();
+    res.json({ ok: true, issues });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/jira/issues', async (req, res) => {
+  try {
+    const created = await createJiraIssue(req.body);
+    res.json({ ok: true, issue: created });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/jira/issues/:key/transition', async (req, res) => {
+  try {
+    const { status } = req.body;
+    const result = await transitionJiraIssue(req.params.key, status);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/jira/issues/:key/comments', async (req, res) => {
+  try {
+    const { comment } = req.body;
+    if (!comment || !comment.trim()) {
+      return res.status(400).json({ error: 'Comment text is required' });
+    }
+    const result = await addJiraComment(req.params.key, comment.trim());
+    res.json({ ok: true, comment: result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==========================================
+// Google Calendar Integration Endpoints
+// ==========================================
+
+app.get('/api/auth/google/url', (req, res) => {
+  try {
+    const origin = req.query.origin || 'http://localhost:4191';
+    const redirectUri = req.query.redirectUri || 'http://localhost:4191';
+    const authUrl = getGoogleAuthUrl(redirectUri, origin);
+    res.json({ ok: true, url: authUrl });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/auth/google/exchange', async (req, res) => {
+  try {
+    const { code, redirectUri } = req.body;
+    if (!code) {
+      return res.status(400).json({ error: 'Authorization code is required' });
+    }
+    const result = await exchangeGoogleCode(code, redirectUri || 'http://localhost:4191');
+    res.json({ ok: true, email: result.email });
+  } catch (err) {
+    console.error('Exchange error:', err);
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.get('/api/auth/google/callback', async (req, res) => {
+  try {
+    const { code, state, error } = req.query;
+    if (error) {
+      return res.redirect(`http://localhost:4191/?google_error=${encodeURIComponent(error)}`);
+    }
+    if (!code) {
+      return res.status(400).send('Missing authorization code');
+    }
+    const { returnOrigin } = await handleGoogleCallback(code, state);
+    res.redirect(`${returnOrigin || 'http://localhost:4191'}?google_connected=true`);
+  } catch (err) {
+    console.error('Google callback error:', err);
+    res.redirect(`http://localhost:4191/?google_error=${encodeURIComponent(err.message)}`);
+  }
+});
+
+app.get('/api/google/status', (_req, res) => {
+  try {
+    const status = getGoogleStatus();
+    res.json(status);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/google/disconnect', (_req, res) => {
+  try {
+    clearGoogleTokens();
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/google/events', async (req, res) => {
+  try {
+    const { timeMin, timeMax } = req.query;
+    const events = await getGoogleCalendarEvents(timeMin, timeMax);
+    res.json({ ok: true, events });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/google/events', async (req, res) => {
+  try {
+    const created = await createGoogleCalendarEvent(req.body);
+    res.json({ ok: true, event: created });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/google/events/:id', async (req, res) => {
+  try {
+    await deleteGoogleCalendarEvent(req.params.id);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==========================================
+// iCalendar (.ics) Protocol Endpoints
+// ==========================================
+
+// Live iCal subscription feed (for Google Calendar "Add from URL")
+app.get('/api/calendar/feed.ics', (_req, res) => {
+  try {
+    const bootstrap = getBootstrap();
+    const state = bootstrap.state || {};
+    const events = state.calendarEvents || [];
+    const tasks = state.kanbanTasks || [];
+    const icsContent = generateIcsFeed(events, tasks);
+
+    res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+    res.setHeader('Content-Disposition', 'inline; filename="clio-schedule.ics"');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.send(icsContent);
+  } catch (err) {
+    console.error('feed.ics error:', err);
+    res.status(500).send('Error generating calendar feed');
+  }
+});
+
+// Download .ics file
+app.get('/api/calendar/export.ics', (_req, res) => {
+  try {
+    const bootstrap = getBootstrap();
+    const state = bootstrap.state || {};
+    const events = state.calendarEvents || [];
+    const tasks = state.kanbanTasks || [];
+    const icsContent = generateIcsFeed(events, tasks);
+
+    res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="clio-calendar.ics"');
+    res.send(icsContent);
+  } catch (err) {
+    console.error('export.ics error:', err);
+    res.status(500).send('Error exporting calendar');
+  }
+});
+
+// Import .ics file or remote iCal URL (e.g. Google Calendar secret iCal URL)
+app.post('/api/calendar/import-ics', async (req, res) => {
+  try {
+    let icsText = req.body?.icsText || '';
+    const url = req.body?.url;
+
+    if (url) {
+      const fetchRes = await fetch(url);
+      if (!fetchRes.ok) {
+        return res.status(400).json({ error: `Failed to fetch .ics URL (HTTP ${fetchRes.status})` });
+      }
+      icsText = await fetchRes.text();
+    }
+
+    if (!icsText || !icsText.trim()) {
+      return res.status(400).json({ error: 'No iCalendar (.ics) content or URL provided' });
+    }
+
+    const parsedEvents = parseIcsContent(icsText);
+    res.json({ ok: true, events: parsedEvents, count: parsedEvents.length });
+  } catch (err) {
+    console.error('import-ics error:', err);
+    res.status(500).json({ error: err.message });
   }
 });
 

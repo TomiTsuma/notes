@@ -332,7 +332,7 @@ const NextcloudLibrary: React.FC = () => {
             Access research papers, subfolders, and sync files directly from your Nextcloud server.
           </p>
           <Button variant="primary" icon="sync" onClick={() => setShowConnModal(true)}>
-            Connect Server ({nextcloudUrl || 'http://100.100.133.10:30027'})
+            {nextcloudUrl ? `Connect Server (${nextcloudUrl})` : 'Connect Nextcloud'}
           </Button>
         </div>
       )}
@@ -424,8 +424,8 @@ const NextcloudLibrary: React.FC = () => {
           onClose={() => setShowConnModal(false)}
         >
           <ConnectionForm
-            serverUrl={nextcloudUrl || 'http://100.100.133.10:30027'}
-            username={nextcloudUsername || 'aeacus'}
+            serverUrl={nextcloudUrl || ''}
+            username={nextcloudUsername || ''}
             password={connPass}
             connected={nextcloudConnected}
             busy={isConnecting}
