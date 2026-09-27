@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -106,11 +106,18 @@ const KanbanBoard: React.FC = () => {
     updateKanbanTask,
     deleteKanbanTask,
     mergeJiraTasks,
+    mergeJiraProjects,
     selectedProjectId,
   } = useAppStore();
 
   const [activeProjFilter, setActiveProjFilter] = useState<string>(selectedProjectId || 'all');
   const [showAddModal, setShowAddModal] = useState<KanbanTask['status'] | null>(null);
+
+  useEffect(() => {
+    if (selectedProjectId) {
+      setActiveProjFilter(selectedProjectId);
+    }
+  }, [selectedProjectId]);
 
   const [taskTitle, setTaskTitle] = useState('');
   const [taskDesc, setTaskDesc] = useState('');
@@ -157,7 +164,13 @@ const KanbanBoard: React.FC = () => {
     setIsSyncingJira(true);
     setJiraNotice(null);
     try {
-      const issues = await fetchJiraIssues();
+      const [projectsList, issues] = await Promise.all([
+        fetchJiraProjects().catch(() => [] as JiraProject[]),
+        fetchJiraIssues(),
+      ]);
+      if (projectsList.length > 0) {
+        mergeJiraProjects(projectsList, jiraConfig.host);
+      }
       mergeJiraTasks(issues);
       setJiraNotice(`Synced ${issues.length} Jira tickets successfully.`);
       setTimeout(() => setJiraNotice(null), 4000);
@@ -216,17 +229,34 @@ const KanbanBoard: React.FC = () => {
   };
 
   const getProjectInfo = (projId: string) => {
-    const p = projects.find((proj) => proj.id === projId);
+    const p = projects.find(
+      (proj) => proj.id === projId || (proj.jiraKey && proj.jiraKey.toUpperCase() === projId.toUpperCase())
+    );
     return { name: p ? p.name : 'General', color: p?.color || 'sky' };
   };
 
-  const filteredTasks = activeProjFilter === 'all' ? kanbanTasks : kanbanTasks.filter((t) => t.projectId === activeProjFilter);
+  const filteredTasks = useMemo(() => {
+    if (activeProjFilter === 'all') return kanbanTasks;
+    const activeProj = projects.find((p) => p.id === activeProjFilter);
+    return kanbanTasks.filter((t) => {
+      if (t.projectId === activeProjFilter) return true;
+      if (activeProj?.jiraKey) {
+        const k = activeProj.jiraKey.toUpperCase();
+        if (t.projectId?.toUpperCase() === k || t.jiraKey?.toUpperCase().startsWith(`${k}-`)) {
+          return true;
+        }
+      }
+      return false;
+    });
+  }, [kanbanTasks, activeProjFilter, projects]);
 
   const activeTask = activeId ? kanbanTasks.find((t) => t.id === activeId) : null;
 
   const handleCreateTask = async (status: KanbanTask['status']) => {
     if (!taskTitle.trim()) return;
+    const targetProj = projects.find((p) => p.id === activeProjFilter);
     const targetProjId = activeProjFilter === 'all' ? projects[0]?.id || 'proj-general' : activeProjFilter;
+    const projectKey = targetProj?.jiraKey || jiraConfig?.projectKey;
     
     let jiraKey: string | undefined;
     let jiraUrl: string | undefined;
@@ -237,7 +267,7 @@ const KanbanBoard: React.FC = () => {
           title: taskTitle,
           description: taskDesc,
           dueDate: taskDueDate || undefined,
-          projectKey: jiraConfig.projectKey,
+          projectKey: projectKey,
         });
         if (res.ok) {
           jiraKey = res.issue.jiraKey;

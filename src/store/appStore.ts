@@ -633,11 +633,11 @@ export const useAppStore = create<AppState>()((set) => ({
         projects: state.projects.map(p => p.id === id ? { ...p, ...updated } : p)
       })),
       mergeJiraProjects: (incoming, host) => set(state => {
-        const existingJiraMap = new Map(state.projects.filter(p => p.jiraKey).map(p => [p.jiraKey, p]));
+        const existingJiraMap = new Map(state.projects.filter(p => p.jiraKey).map(p => [p.jiraKey!.toUpperCase(), p]));
         const added: Project[] = [];
         const updatedProjects = state.projects.map(p => {
           if (p.jiraKey) {
-            const match = incoming.find(jp => jp.key === p.jiraKey);
+            const match = incoming.find(jp => jp.key?.toUpperCase() === p.jiraKey?.toUpperCase());
             if (match) {
               return {
                 ...p,
@@ -652,7 +652,7 @@ export const useAppStore = create<AppState>()((set) => ({
         });
 
         for (const jp of incoming) {
-          if (!existingJiraMap.has(jp.key)) {
+          if (!existingJiraMap.has(jp.key?.toUpperCase())) {
             added.push({
               id: `proj-jira-${jp.key.toLowerCase()}`,
               name: jp.name,
@@ -667,7 +667,24 @@ export const useAppStore = create<AppState>()((set) => ({
           }
         }
 
-        return { projects: [...updatedProjects, ...added] };
+        const allProjects = [...updatedProjects, ...added];
+        const jiraProjMap = new Map(
+          allProjects
+            .filter(p => p.jiraKey)
+            .map(p => [p.jiraKey!.toUpperCase(), p.id])
+        );
+
+        // Normalize existing tasks to the matched project id
+        const normalizedTasks = state.kanbanTasks.map(t => {
+          const rawKey = t.projectId || (t.jiraKey ? t.jiraKey.split('-')[0] : '');
+          const matchedProjId = (rawKey && jiraProjMap.get(rawKey.toUpperCase())) || t.projectId;
+          return matchedProjId !== t.projectId ? { ...t, projectId: matchedProjId } : t;
+        });
+
+        return {
+          projects: allProjects,
+          kanbanTasks: normalizedTasks,
+        };
       }),
       addKanbanTask: (task) => set(state => ({ kanbanTasks: [...state.kanbanTasks, task] })),
       updateKanbanTask: (id, updated) => set(state => {
@@ -694,9 +711,28 @@ export const useAppStore = create<AppState>()((set) => ({
       }),
       deleteKanbanTask: (id) => set(state => ({ kanbanTasks: state.kanbanTasks.filter(t => t.id !== id) })),
       mergeJiraTasks: (incoming) => set(state => {
-        const incomingKeySet = new Set(incoming.map(t => t.jiraKey || t.id));
-        const preserved = state.kanbanTasks.filter(t => !t.jiraKey && !incomingKeySet.has(t.id));
-        return { kanbanTasks: [...incoming, ...preserved] };
+        const jiraProjMap = new Map(
+          state.projects
+            .filter(p => p.jiraKey)
+            .map(p => [p.jiraKey!.toUpperCase(), p.id])
+        );
+
+        const normalizeTask = (t: KanbanTask): KanbanTask => {
+          const rawKey = t.projectId || (t.jiraKey ? t.jiraKey.split('-')[0] : '');
+          const matchedProjId = (rawKey && jiraProjMap.get(rawKey.toUpperCase())) || t.projectId;
+          return {
+            ...t,
+            projectId: matchedProjId,
+          };
+        };
+
+        const normalizedIncoming = incoming.map(normalizeTask);
+        const incomingKeySet = new Set(normalizedIncoming.map(t => t.jiraKey || t.id));
+        const preserved = state.kanbanTasks
+          .filter(t => !t.jiraKey && !incomingKeySet.has(t.id))
+          .map(normalizeTask);
+
+        return { kanbanTasks: [...normalizedIncoming, ...preserved] };
       }),
       addTaskComment: (taskId, comment) => set(state => ({
         kanbanTasks: state.kanbanTasks.map(t => {

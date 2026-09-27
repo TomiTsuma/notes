@@ -28,6 +28,18 @@ export function useStoreSync() {
           if (loadedState.nextcloudPapersPath === '/Papers') {
             loadedState.nextcloudPapersPath = '/';
           }
+          if (Array.isArray(loadedState.projects) && Array.isArray(loadedState.kanbanTasks)) {
+            const jiraProjMap = new Map(
+              (loadedState.projects as any[])
+                .filter((p: any) => p?.jiraKey)
+                .map((p: any) => [p.jiraKey.toUpperCase(), p.id])
+            );
+            loadedState.kanbanTasks = (loadedState.kanbanTasks as any[]).map((t: any) => {
+              const rawKey = (t.projectId || (t.jiraKey ? t.jiraKey.split('-')[0] : ''))?.toUpperCase();
+              const matchedProjId = (rawKey && jiraProjMap.get(rawKey)) || t.projectId;
+              return matchedProjId !== t.projectId ? { ...t, projectId: matchedProjId } : t;
+            });
+          }
           useAppStore.setState(loadedState as unknown as Parameters<typeof useAppStore.setState>[0]);
         } else {
           const legacyRaw = await get(IDB_LEGACY_KEY);
@@ -43,6 +55,18 @@ export function useStoreSync() {
           if (legacyState) {
             if (legacyState.nextcloudPapersPath === '/Papers') {
               legacyState.nextcloudPapersPath = '/';
+            }
+            if (Array.isArray(legacyState.projects) && Array.isArray(legacyState.kanbanTasks)) {
+              const jiraProjMap = new Map(
+                (legacyState.projects as any[])
+                  .filter((p: any) => p?.jiraKey)
+                  .map((p: any) => [p.jiraKey.toUpperCase(), p.id])
+              );
+              legacyState.kanbanTasks = (legacyState.kanbanTasks as any[]).map((t: any) => {
+                const rawKey = (t.projectId || (t.jiraKey ? t.jiraKey.split('-')[0] : ''))?.toUpperCase();
+                const matchedProjId = (rawKey && jiraProjMap.get(rawKey)) || t.projectId;
+                return matchedProjId !== t.projectId ? { ...t, projectId: matchedProjId } : t;
+              });
             }
             useAppStore.setState(legacyState as unknown as Parameters<typeof useAppStore.setState>[0]);
             await saveBootstrap(getPersistedSnapshot(useAppStore.getState()));
