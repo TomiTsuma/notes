@@ -1692,17 +1692,40 @@ export interface ToolPopoverProps {
   size?: number;
   color?: string;
   palmRejection?: boolean;
+  markerStraightMode?: boolean;
+  onToolChange?: (t: string) => void;
   onSizeChange?: (s: number) => void;
   onColorChange?: (c: string) => void;
+  onPalmRejectionChange?: (on: boolean) => void;
+  onMarkerStraightModeChange?: (on: boolean) => void;
 }
 
-export function ToolPopover({ tool = 'pen', size = 3, color = 'pen-black', palmRejection = true, onSizeChange, onColorChange }: ToolPopoverProps) {
+export function ToolPopover({
+  tool = 'pen',
+  size = 3,
+  color = 'pen-black',
+  palmRejection = true,
+  markerStraightMode = false,
+  onToolChange,
+  onSizeChange,
+  onColorChange,
+  onPalmRejectionChange,
+  onMarkerStraightModeChange,
+}: ToolPopoverProps) {
   const [s, setS] = useState(size);
   const sizes = [1, 2, 3, 5, 8, 12, 16];
   return (
     <div className="cl-popover" role="dialog" aria-label="Tool settings">
       <h6>Tool</h6>
-      <SegmentedControl value={tool} options={[{ value: 'pen', label: 'Pen' }, { value: 'pencil', label: 'Pencil' }, { value: 'highlighter', label: 'Marker' }]} />
+      <SegmentedControl
+        value={tool}
+        onChange={onToolChange}
+        options={[
+          { value: 'pen', label: 'Pen' },
+          { value: 'pencil', label: 'Pencil' },
+          { value: 'highlighter', label: 'Marker' },
+        ]}
+      />
       <h6>Size</h6>
       <div className="cl-sizes">
         {sizes.map((z) => (
@@ -1718,12 +1741,26 @@ export function ToolPopover({ tool = 'pen', size = 3, color = 'pen-black', palmR
       </div>
       <h6>Colour</h6>
       <ColorPicker colors={PEN_COLORS} value={color} onChange={onColorChange} allowCustom label="Ink colour" />
+      {tool === 'highlighter' && (
+        <div className="cl-toggle" style={{ borderTop: '1px solid var(--line)', paddingTop: 12 }}>
+          <div className="cl-row" style={{ gap: 8, alignItems: 'flex-start' }}>
+            <Icon name="ruler" size={16} className="cl-muted" style={{ marginTop: 2 }} />
+            <div>
+              <div style={{ fontWeight: 500, fontSize: 13, lineHeight: '18px' }}>Straight lines</div>
+              <div style={{ fontSize: 11, color: 'var(--ink-3, #8e887f)', lineHeight: '14px' }}>
+                Hold Shift or hold at stroke end to snap
+              </div>
+            </div>
+          </div>
+          <Switch on={markerStraightMode} onChange={onMarkerStraightModeChange} label="Straight lines" />
+        </div>
+      )}
       <div className="cl-toggle" style={{ borderTop: '1px solid var(--line)', paddingTop: 12 }}>
         <span className="cl-row" style={{ gap: 8 }}>
           <Icon name="hand" size={16} className="cl-muted" />
           Palm rejection
         </span>
-        <Switch on={palmRejection} label="Palm rejection" />
+        <Switch on={palmRejection} onChange={onPalmRejectionChange} label="Palm rejection" />
       </div>
     </div>
   );

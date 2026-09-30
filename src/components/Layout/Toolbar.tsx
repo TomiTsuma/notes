@@ -4,7 +4,7 @@ import { useAppStore } from '../../store/appStore';
 import type { ToolType } from '../../store/appStore';
 
 const Toolbar: React.FC = () => {
-  const { activeTool, setActiveTool, brushColor, setBrushColor } = useAppStore();
+  const { activeTool, setActiveTool, brushColor, setBrushColor, markerStraightMode, toggleMarkerStraightMode } = useAppStore();
 
   const renderToolBtn = (tool: ToolType, Icon: React.FC<React.SVGProps<SVGSVGElement>>, label: string) => (
     <button 
@@ -38,7 +38,7 @@ const Toolbar: React.FC = () => {
       
       {/* Dynamic Brush Colors panel */}
       {(activeTool === 'pen' || activeTool === 'highlighter') && (
-        <div style={{ marginLeft: '24px', display: 'flex', gap: '8px', padding: '0 12px', borderLeft: '1px solid var(--border-color)' }}>
+        <div style={{ marginLeft: '24px', display: 'flex', gap: '8px', padding: '0 12px', borderLeft: '1px solid var(--border-color)', alignItems: 'center' }}>
           {['#1c1c1e', '#ea3323', '#0a7aff', '#34c759', '#ffcc00'].map(color => (
             <button 
               key={color}
@@ -51,6 +51,25 @@ const Toolbar: React.FC = () => {
               }}
             />
           ))}
+          {activeTool === 'highlighter' && (
+            <button
+              onClick={toggleMarkerStraightMode}
+              style={{
+                marginLeft: '12px',
+                padding: '4px 10px',
+                borderRadius: '8px',
+                border: '1px solid var(--border-color)',
+                backgroundColor: markerStraightMode ? 'var(--accent-light)' : 'transparent',
+                color: markerStraightMode ? 'var(--accent-color)' : 'var(--text-primary)',
+                cursor: 'pointer',
+                fontSize: '12px',
+                fontWeight: 500,
+              }}
+              title="Toggle straight lines for Marker (or hold Shift / pause at stroke end)"
+            >
+              Straight: {markerStraightMode ? 'ON' : 'Auto'}
+            </button>
+          )}
         </div>
       )}
     </div>

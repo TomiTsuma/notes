@@ -35,6 +35,36 @@ function getSvgPathFromPoints(points: Point[]): string {
 
 type Box = { x: number, y: number, w: number, h: number };
 
+function snapLine(x0: number, y0: number, x1: number, y1: number, isShift: boolean): [number, number] {
+  const dx = x1 - x0;
+  const dy = y1 - y0;
+  const dist = Math.hypot(dx, dy);
+  if (dist < 8) return [x1, y1];
+
+  if (isShift) {
+    // Snap to nearest 45 degrees: 0, 45, 90, 135, 180, etc.
+    const angle = Math.atan2(dy, dx);
+    const snapAngle = Math.round(angle / (Math.PI / 4)) * (Math.PI / 4);
+    return [
+      Math.round(x0 + dist * Math.cos(snapAngle)),
+      Math.round(y0 + dist * Math.sin(snapAngle)),
+    ];
+  }
+
+  // Text-friendly smart snapping (aligns perfectly with notebook/document text lines):
+  // If line is predominantly horizontal (within ~15° of horizontal): tan(15°) ≈ 0.27
+  if (Math.abs(dy) <= Math.abs(dx) * 0.27) {
+    return [x1, y0];
+  }
+
+  // If line is predominantly vertical (within ~15° of vertical)
+  if (Math.abs(dx) <= Math.abs(dy) * 0.27) {
+    return [x0, y1];
+  }
+
+  return [x1, y1];
+}
+
 function interpolateStrokePoints(stroke: Stroke): Point[] {
   if (stroke.points.length === 2 && (stroke.tool === 'highlighter' || stroke.tool === 'ruler')) {
     const [start, end] = stroke.points;
@@ -153,6 +183,7 @@ const DrawingCanvas: React.FC<{ documentId?: string; width?: number; height?: nu
   const brushSize = useAppStore(s => s.brushSize);
   const activeDocumentId = useAppStore(s => s.activeDocumentId);
   const palmRejection = useAppStore(s => s.palmRejection);
+  const markerStraightMode = useAppStore(s => s.markerStraightMode);
   const setStrokes = useAppStore(s => s.setStrokes);
   const translateStrokes = useAppStore(s => s.translateStrokes);
   const addTextElement = useAppStore(s => s.addTextElement);
@@ -167,6 +198,9 @@ const DrawingCanvas: React.FC<{ documentId?: string; width?: number; height?: nu
   const textElements = useAppStore(s => (effectiveDocId ? s.annotations[effectiveDocId]?.textElements : undefined)) ?? EMPTY_TEXT_ELEMENTS;
 
   const currentStrokeRef = useRef<Point[]>([]);
+  const strokeStartRef = useRef<{ x: number, y: number } | null>(null);
+  const lastPointerPosRef = useRef<{ x: number, y: number }>({ x: 0, y: 0 });
+  const isShiftRef = useRef(false);
   const isDrawingRef = useRef(false);
   const isErasingRef = useRef(false);
   const snapModeRef = useRef(false);
@@ -192,11 +226,41 @@ const DrawingCanvas: React.FC<{ documentId?: string; width?: number; height?: nu
   const brushSizeRef = useRef(brushSize);
   const effectiveDocIdRef = useRef(effectiveDocId);
   const palmRejectionRef = useRef(palmRejection);
+  const markerStraightModeRef = useRef(markerStraightMode);
   activeToolRef.current = activeTool;
   brushColorRef.current = brushColor;
   brushSizeRef.current = brushSize;
   effectiveDocIdRef.current = effectiveDocId;
   palmRejectionRef.current = palmRejection;
+  markerStraightModeRef.current = markerStraightMode;
+
+  const triggerSnap = useCallback(() => {
+    if (!isDrawingRef.current) return;
+    const pts = currentStrokeRef.current;
+    if (pts.length < 1) return;
+    const start = strokeStartRef.current || { x: pts[0][0], y: pts[0][1] };
+    const cur = lastPointerPosRef.current;
+    const dist = Math.hypot(cur.x - start.x, cur.y - start.y);
+    if (dist < 8) return;
+
+    snapModeRef.current = true;
+    const [sx, sy] = snapLine(start.x, start.y, cur.x, cur.y, isShiftRef.current);
+    pts.length = 1;
+    pts.push([sx, sy, 0.5]);
+
+    const tool = activeToolRef.current;
+    const liveEl = tool === 'highlighter' ? liveHlPathRef.current : livePenPathRef.current;
+    if (liveEl) {
+      const size = tool === 'highlighter' ? brushSizeRef.current * 3 : brushSizeRef.current;
+      liveEl.setAttribute('d', getSvgPathFromPoints(pts));
+      liveEl.setAttribute('stroke', brushColorRef.current);
+      liveEl.setAttribute('stroke-width', String(size));
+    }
+    holdTimeoutRef.current = null;
+  }, []);
+
+  const triggerSnapRef = useRef(triggerSnap);
+  triggerSnapRef.current = triggerSnap;
 
   // Cached rect ref - updated on resize AND scroll
   const rectRef = useRef({ left: 0, top: 0, width: 0, height: 0 });
@@ -246,23 +310,35 @@ const DrawingCanvas: React.FC<{ documentId?: string; width?: number; height?: nu
       const pts = currentStrokeRef.current;
       const prevLen = pts.length;
       const lastEvt = events[events.length - 1];
+      const curX = lastEvt.clientX - rl;
+      const curY = lastEvt.clientY - rt;
+      lastPointerPosRef.current = { x: curX, y: curY };
+      const isShift = lastEvt.shiftKey || isShiftRef.current;
 
-      // Straight-line mode is armed by holding still. Any real movement before the
-      // timer fires cancels it, so ordinary freehand strokes are never straightened.
-      const anchor = holdAnchorRef.current;
-      if (anchor && holdTimeoutRef.current) {
-        const dx = (lastEvt.clientX - rl) - anchor.x;
-        const dy = (lastEvt.clientY - rt) - anchor.y;
-        if (Math.hypot(dx, dy) > HOLD_SLOP) {
-          clearTimeout(holdTimeoutRef.current);
-          holdTimeoutRef.current = null;
-          holdAnchorRef.current = null;
+      if (isShift && !snapModeRef.current) {
+        snapModeRef.current = true;
+      }
+
+      // Draw-and-hold straight line snap (like Apple Notes / GoodNotes / Procreate):
+      // When holding still at the end of a stroke for 320ms, snap to a straight line!
+      if (!snapModeRef.current && (tool === 'highlighter' || tool === 'pen')) {
+        const anchor = holdAnchorRef.current;
+        const distFromAnchor = anchor ? Math.hypot(curX - anchor.x, curY - anchor.y) : Infinity;
+        if (distFromAnchor > HOLD_SLOP) {
+          holdAnchorRef.current = { x: curX, y: curY };
+          if (holdTimeoutRef.current) {
+            clearTimeout(holdTimeoutRef.current);
+            holdTimeoutRef.current = null;
+          }
+          holdTimeoutRef.current = setTimeout(() => triggerSnapRef.current(), 320);
         }
       }
 
       if (snapModeRef.current && pts.length > 0) {
+        const start = strokeStartRef.current || { x: pts[0][0], y: pts[0][1] };
+        const [sx, sy] = snapLine(start.x, start.y, curX, curY, isShift);
         pts.length = 1;
-        pts.push([lastEvt.clientX - rl, lastEvt.clientY - rt, 0.5]);
+        pts.push([sx, sy, 0.5]);
       } else {
         const minDistSq = (tool === 'highlighter' ? MIN_SAMPLE_DIST_HIGHLIGHTER : MIN_SAMPLE_DIST) ** 2;
         for (const evt of events) {
@@ -380,6 +456,23 @@ const DrawingCanvas: React.FC<{ documentId?: string; width?: number; height?: nu
       liveHlPathRef.current?.setAttribute('d', '');
     };
 
+    // Keyboard Shift listeners to snap straight lines interactively
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') {
+        isShiftRef.current = true;
+        if (isDrawingRef.current && (activeToolRef.current === 'highlighter' || activeToolRef.current === 'pen')) {
+          triggerSnapRef.current();
+        }
+      }
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') {
+        isShiftRef.current = false;
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+
     // Native pointerdown / touchstart listeners with passive: false to prevent browser drag/scroll gestures
     const onNativePointerDown = (e: PointerEvent) => {
       updateRect();
@@ -409,6 +502,8 @@ const DrawingCanvas: React.FC<{ documentId?: string; width?: number; height?: nu
 
     return () => {
       ro.disconnect();
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
       el.removeEventListener('pointerdown', onNativePointerDown);
       el.removeEventListener('touchstart', onNativeTouchStart);
       for (const t of scrollTargets) {
@@ -533,10 +628,17 @@ const DrawingCanvas: React.FC<{ documentId?: string; width?: number; height?: nu
       return;
     }
 
+    const isShift = e.shiftKey || isShiftRef.current;
+    const isStraightMarker = activeTool === 'highlighter' && markerStraightMode;
+    const isSnap = activeTool === 'ruler' || isStraightMarker || isShift;
+    snapModeRef.current = isSnap;
+    strokeStartRef.current = { x, y };
+    lastPointerPosRef.current = { x, y };
+    holdAnchorRef.current = { x, y };
+
     isDrawingRef.current = true;
     drawingPointerIdRef.current = e.pointerId;
     currentStrokeRef.current = [[x, y, 0.5]];
-    snapModeRef.current = activeTool === 'ruler';
 
     // Show the initial dot immediately; a zero-length path with a round cap is a dot
     const liveEl = activeTool === 'highlighter' ? liveHlPathRef.current : livePenPathRef.current;
@@ -547,14 +649,11 @@ const DrawingCanvas: React.FC<{ documentId?: string; width?: number; height?: nu
       liveEl.setAttribute('stroke-width', String(size));
     }
     
-    if (activeTool === 'highlighter') {
-      holdAnchorRef.current = { x, y };
-      holdTimeoutRef.current = setTimeout(() => {
-        snapModeRef.current = true;
-        holdTimeoutRef.current = null;
-      }, 400);
+    if (!isSnap && (activeTool === 'highlighter' || activeTool === 'pen')) {
+      if (holdTimeoutRef.current) clearTimeout(holdTimeoutRef.current);
+      holdTimeoutRef.current = setTimeout(() => triggerSnapRef.current(), 380);
     }
-  }, [activeTool, lassoBox, effectiveDocId, activeDocumentId, addTextElement, setFocusedTextId, eraseAt, brushColor, brushSize, palmRejection]);
+  }, [activeTool, lassoBox, effectiveDocId, activeDocumentId, addTextElement, setFocusedTextId, eraseAt, brushColor, brushSize, palmRejection, markerStraightMode]);
 
   const handlePointerMoveReact = useCallback((e: React.PointerEvent) => {
     if (activeTool !== 'select' || isDrawingRef.current) return;
@@ -584,7 +683,8 @@ const DrawingCanvas: React.FC<{ documentId?: string; width?: number; height?: nu
       setLassoBox({ x: nx, y: ny, w: nw, h: nh });
       const selected: number[] = [];
       strokes.forEach((stroke, idx) => {
-        if (stroke.points.some(p => p[0] >= nx && p[0] <= nx + nw && p[1] >= ny && p[1] <= ny + nh)) {
+        const testPoints = interpolateStrokePoints(stroke);
+        if (testPoints.some(p => p[0] >= nx && p[0] <= nx + nw && p[1] >= ny && p[1] <= ny + nh)) {
           selected.push(idx);
         }
       });

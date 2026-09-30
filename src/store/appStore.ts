@@ -206,12 +206,15 @@ export interface AppState {
   userStreak: UserStreak;
 
   palmRejection: boolean;
+  markerStraightMode: boolean;
   dailyTodos: DailyTodo[];
 
   setActiveTool: (tool: ToolType) => void;
   setBrushColor: (color: string) => void;
   setBrushSize: (size: number) => void;
   togglePalmRejection: () => void;
+  setMarkerStraightMode: (enabled: boolean) => void;
+  toggleMarkerStraightMode: () => void;
   addDailyTodo: (todo: DailyTodo) => void;
   toggleDailyTodo: (id: string) => void;
   deleteDailyTodo: (id: string) => void;
@@ -307,6 +310,7 @@ export function getPersistedSnapshot(state: AppState): Record<string, unknown> {
     selectedProjectId: state.selectedProjectId,
     currentBackground: state.currentBackground,
     palmRejection: state.palmRejection,
+    markerStraightMode: state.markerStraightMode,
     dailyTodos: state.dailyTodos,
     theme: state.theme,
     calendarViewMode: state.calendarViewMode,
@@ -323,6 +327,7 @@ export const useAppStore = create<AppState>()((set) => ({
       brushColor: '#1c1c1e',
       brushSize: 4,
       palmRejection: false,
+      markerStraightMode: false,
       dailyTodos: [],
       focusedTextId: null,
       
@@ -386,6 +391,8 @@ export const useAppStore = create<AppState>()((set) => ({
       setBrushColor: (color) => set({ brushColor: color }),
       setBrushSize: (size) => set({ brushSize: size }),
       togglePalmRejection: () => set(state => ({ palmRejection: !state.palmRejection })),
+      setMarkerStraightMode: (enabled) => set({ markerStraightMode: enabled }),
+      toggleMarkerStraightMode: () => set(state => ({ markerStraightMode: !state.markerStraightMode })),
       addDailyTodo: (todo) => set(state => ({ dailyTodos: [...state.dailyTodos, todo] })),
       toggleDailyTodo: (id) => set(state => ({
         dailyTodos: state.dailyTodos.map(t => t.id === id ? { ...t, completed: !t.completed } : t)
