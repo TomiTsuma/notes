@@ -142,7 +142,7 @@ const CalendarView: React.FC = () => {
       window.history.replaceState({}, '', window.location.pathname);
       setIsSyncingGoogle(true);
       setSyncNotice('Connecting Google account...');
-      exchangeGoogleCode(authCode, 'http://localhost:4191')
+      exchangeGoogleCode(authCode, window.location.origin || 'https://chlio.ereuna.org')
         .then((res) => {
           setGoogleStatus({ connected: true, email: res.email });
           setSyncNotice(`Connected to Google Calendar (${res.email})! Syncing events...`);
@@ -195,7 +195,7 @@ const CalendarView: React.FC = () => {
 
   const handleConnectGoogle = async () => {
     try {
-      const url = await fetchGoogleAuthUrl('http://localhost:4191');
+      const url = await fetchGoogleAuthUrl(window.location.origin || 'https://chlio.ereuna.org');
       window.location.href = url;
     } catch (err: any) {
       alert(`Could not start Google authentication: ${err.message}`);

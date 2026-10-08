@@ -357,8 +357,9 @@ app.post('/api/jira/issues/:key/comments', async (req, res) => {
 
 app.get('/api/auth/google/url', (req, res) => {
   try {
-    const origin = req.query.origin || 'http://localhost:4191';
-    const redirectUri = req.query.redirectUri || 'http://localhost:4191';
+    const defaultUri = process.env.GOOGLE_REDIRECT_URI || 'https://chlio.ereuna.org';
+    const origin = req.query.origin || defaultUri;
+    const redirectUri = req.query.redirectUri || defaultUri;
     const authUrl = getGoogleAuthUrl(redirectUri, origin);
     res.json({ ok: true, url: authUrl });
   } catch (err) {
@@ -372,7 +373,8 @@ app.post('/api/auth/google/exchange', async (req, res) => {
     if (!code) {
       return res.status(400).json({ error: 'Authorization code is required' });
     }
-    const result = await exchangeGoogleCode(code, redirectUri || 'http://localhost:4191');
+    const defaultUri = process.env.GOOGLE_REDIRECT_URI || 'https://chlio.ereuna.org';
+    const result = await exchangeGoogleCode(code, redirectUri || defaultUri);
     res.json({ ok: true, email: result.email });
   } catch (err) {
     console.error('Exchange error:', err);
@@ -382,18 +384,19 @@ app.post('/api/auth/google/exchange', async (req, res) => {
 
 app.get('/api/auth/google/callback', async (req, res) => {
   try {
+    const defaultUri = process.env.GOOGLE_REDIRECT_URI || 'https://chlio.ereuna.org';
     const { code, state, error } = req.query;
     if (error) {
-      return res.redirect(`http://localhost:4191/?google_error=${encodeURIComponent(error)}`);
+      return res.redirect(`${defaultUri}/?google_error=${encodeURIComponent(error)}`);
     }
     if (!code) {
       return res.status(400).send('Missing authorization code');
     }
     const { returnOrigin } = await handleGoogleCallback(code, state);
-    res.redirect(`${returnOrigin || 'http://localhost:4191'}?google_connected=true`);
+    res.redirect(`${returnOrigin || defaultUri}?google_connected=true`);
   } catch (err) {
     console.error('Google callback error:', err);
-    res.redirect(`http://localhost:4191/?google_error=${encodeURIComponent(err.message)}`);
+    res.redirect(`${process.env.GOOGLE_REDIRECT_URI || 'https://chlio.ereuna.org'}/?google_error=${encodeURIComponent(err.message)}`);
   }
 });
 

@@ -12,7 +12,7 @@ const GOOGLE_TOKENS_FILE = path.join(process.env.CLIO_DATA_DIR || './data', 'goo
 
 const getClientId = () => process.env.GOOGLE_CLIENT_ID || '';
 const getClientSecret = () => process.env.GOOGLE_CLIENT_SECRET || '';
-const getDefaultRedirectUri = () => process.env.GOOGLE_REDIRECT_URI || 'http://localhost:4191';
+const getDefaultRedirectUri = () => process.env.GOOGLE_REDIRECT_URI || 'https://chlio.ereuna.org';
 
 export function getGoogleTokens() {
   try {
@@ -52,7 +52,7 @@ export function clearGoogleTokens() {
 /**
  * Generate Google OAuth 2.0 authorization URL
  */
-export function getGoogleAuthUrl(redirectUri = getDefaultRedirectUri(), returnOrigin = 'http://localhost:4191') {
+export function getGoogleAuthUrl(redirectUri = getDefaultRedirectUri(), returnOrigin = process.env.GOOGLE_REDIRECT_URI || 'https://chlio.ereuna.org') {
   const clientId = getClientId();
   if (!clientId) {
     throw new Error('Google OAuth Client ID is not configured. Please set GOOGLE_CLIENT_ID in your .env file.');
@@ -139,7 +139,7 @@ export async function exchangeGoogleCode(code, redirectUri = getDefaultRedirectU
  * Exchange authorization code for tokens from server callback
  */
 export async function handleGoogleCallback(code, state) {
-  let returnOrigin = 'http://localhost:4191';
+  let returnOrigin = process.env.GOOGLE_REDIRECT_URI || 'https://chlio.ereuna.org';
   let redirectUri = getDefaultRedirectUri();
   if (state) {
     try {

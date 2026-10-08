@@ -6,9 +6,17 @@ export interface GoogleStatus {
   hasRefreshToken?: boolean;
 }
 
-export async function fetchGoogleAuthUrl(redirectUri = 'http://localhost:4191'): Promise<string> {
+const getDefaultRedirectUri = (): string => {
+  if (typeof window !== 'undefined' && window.location.origin) {
+    return window.location.origin;
+  }
+  return 'https://chlio.ereuna.org';
+};
+
+export async function fetchGoogleAuthUrl(redirectUri = getDefaultRedirectUri()): Promise<string> {
+  const origin = typeof window !== 'undefined' && window.location.origin ? window.location.origin : 'https://chlio.ereuna.org';
   const res = await fetch(
-    `/api/auth/google/url?origin=${encodeURIComponent(window.location.origin)}&redirectUri=${encodeURIComponent(redirectUri)}`
+    `/api/auth/google/url?origin=${encodeURIComponent(origin)}&redirectUri=${encodeURIComponent(redirectUri)}`
   );
   if (!res.ok) throw new Error('Failed to get Google Auth URL');
   const data = await res.json();
@@ -17,7 +25,7 @@ export async function fetchGoogleAuthUrl(redirectUri = 'http://localhost:4191'):
 
 export async function exchangeGoogleCode(
   code: string,
-  redirectUri = 'http://localhost:4191'
+  redirectUri = getDefaultRedirectUri()
 ): Promise<{ ok: boolean; email: string }> {
   const res = await fetch('/api/auth/google/exchange', {
     method: 'POST',
