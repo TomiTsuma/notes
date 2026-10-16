@@ -177,7 +177,21 @@ function strokeHitTest(stroke: Stroke, x: number, y: number, brushSize: number):
   return false;
 }
 
-const DrawingCanvas: React.FC<{ documentId?: string; width?: number; height?: number }> = ({ documentId, width: propWidth, height: propHeight }) => {
+const DrawingCanvas: React.FC<{
+  documentId?: string;
+  width?: number;
+  height?: number;
+  scale?: number;
+  baseWidth?: number;
+  baseHeight?: number;
+}> = ({
+  documentId,
+  width: propWidth,
+  height: propHeight,
+  scale: propScale = 1,
+  baseWidth: propBaseWidth,
+  baseHeight: propBaseHeight,
+}) => {
   const activeTool = useAppStore(s => s.activeTool);
   const brushColor = useAppStore(s => s.brushColor);
   const brushSize = useAppStore(s => s.brushSize);
@@ -197,6 +211,9 @@ const DrawingCanvas: React.FC<{ documentId?: string; width?: number; height?: nu
   const strokes = useAppStore(s => (effectiveDocId ? s.annotations[effectiveDocId]?.strokes : undefined)) ?? EMPTY_STROKES;
   const textElements = useAppStore(s => (effectiveDocId ? s.annotations[effectiveDocId]?.textElements : undefined)) ?? EMPTY_TEXT_ELEMENTS;
 
+  const scaleRef = useRef(propScale);
+  scaleRef.current = propScale;
+
   const currentStrokeRef = useRef<Point[]>([]);
   const strokeStartRef = useRef<{ x: number, y: number } | null>(null);
   const lastPointerPosRef = useRef<{ x: number, y: number }>({ x: 0, y: 0 });
@@ -205,7 +222,10 @@ const DrawingCanvas: React.FC<{ documentId?: string; width?: number; height?: nu
   const isErasingRef = useRef(false);
   const snapModeRef = useRef(false);
   const holdAnchorRef = useRef<{ x: number, y: number } | null>(null);
-  const [canvasDims, setCanvasDims] = useState({ w: propWidth || 800, h: propHeight || 1200 });
+  const [canvasDims, setCanvasDims] = useState({
+    w: propBaseWidth || propWidth || 800,
+    h: propBaseHeight || propHeight || 1200,
+  });
   
   // Lasso state
   const [lassoBox, setLassoBox] = useState<Box | null>(null);
@@ -307,11 +327,12 @@ const DrawingCanvas: React.FC<{ documentId?: string; width?: number; height?: nu
 
       const rl = rectRef.current.left;
       const rt = rectRef.current.top;
+      const s = scaleRef.current || 1;
       const pts = currentStrokeRef.current;
       const prevLen = pts.length;
       const lastEvt = events[events.length - 1];
-      const curX = lastEvt.clientX - rl;
-      const curY = lastEvt.clientY - rt;
+      const curX = (lastEvt.clientX - rl) / s;
+      const curY = (lastEvt.clientY - rt) / s;
       lastPointerPosRef.current = { x: curX, y: curY };
       const isShift = lastEvt.shiftKey || isShiftRef.current;
 
@@ -340,10 +361,10 @@ const DrawingCanvas: React.FC<{ documentId?: string; width?: number; height?: nu
         pts.length = 1;
         pts.push([sx, sy, 0.5]);
       } else {
-        const minDistSq = (tool === 'highlighter' ? MIN_SAMPLE_DIST_HIGHLIGHTER : MIN_SAMPLE_DIST) ** 2;
+        const minDistSq = ((tool === 'highlighter' ? MIN_SAMPLE_DIST_HIGHLIGHTER : MIN_SAMPLE_DIST) / s) ** 2;
         for (const evt of events) {
-          const x = evt.clientX - rl;
-          const y = evt.clientY - rt;
+          const x = (evt.clientX - rl) / s;
+          const y = (evt.clientY - rt) / s;
           const last = pts[pts.length - 1];
           if (last) {
             const dx = x - last[0];
@@ -376,8 +397,9 @@ const DrawingCanvas: React.FC<{ documentId?: string; width?: number; height?: nu
       // commit when a stroke was actually hit — otherwise every move re-renders.
       if (tool === 'eraser') {
         if (!isErasingRef.current || e.pointerId !== drawingPointerIdRef.current) return;
-        const x = e.clientX - rl;
-        const y = e.clientY - rt;
+        const s = scaleRef.current || 1;
+        const x = (e.clientX - rl) / s;
+        const y = (e.clientY - rt) / s;
         const docId = effectiveDocIdRef.current;
         const bs = brushSizeRef.current;
         setStrokes(docId, prev => {
@@ -522,8 +544,9 @@ const DrawingCanvas: React.FC<{ documentId?: string; width?: number; height?: nu
     const updateCanvasDimensions = () => {
       const rect = el.getBoundingClientRect();
       const parentH = el.parentElement?.scrollHeight || el.offsetHeight;
-      const w = propWidth || (rect.width > 0 ? rect.width : 800);
-      const h = propHeight || (rect.height > 0 ? Math.max(rect.height, parentH) : 800);
+      const s = scaleRef.current || 1;
+      const w = propBaseWidth || propWidth || (rect.width > 0 ? rect.width / s : 800);
+      const h = propBaseHeight || propHeight || (rect.height > 0 ? Math.max(rect.height / s, parentH / s) : 800);
       setCanvasDims({ w, h });
     };
     updateCanvasDimensions();
@@ -535,12 +558,13 @@ const DrawingCanvas: React.FC<{ documentId?: string; width?: number; height?: nu
       ro.disconnect();
       window.removeEventListener('resize', updateCanvasDimensions);
     };
-  }, [activeDocumentId, propWidth, propHeight]);
+  }, [activeDocumentId, propWidth, propHeight, propBaseWidth, propBaseHeight, propScale]);
 
   const getCoords = (clientX: number, clientY: number) => {
     const rect = containerRef.current?.getBoundingClientRect();
     if (!rect) return null;
-    return { x: clientX - rect.left, y: clientY - rect.top };
+    const s = scaleRef.current || 1;
+    return { x: (clientX - rect.left) / s, y: (clientY - rect.top) / s };
   };
 
   const eraseAt = useCallback((x: number, y: number) => {
@@ -585,8 +609,9 @@ const DrawingCanvas: React.FC<{ documentId?: string; width?: number; height?: nu
     }
     const rl = rectRef.current.left;
     const rt = rectRef.current.top;
-    const x = e.clientX - rl;
-    const y = e.clientY - rt;
+    const s = scaleRef.current || 1;
+    const x = (e.clientX - rl) / s;
+    const y = (e.clientY - rt) / s;
     
     if (activeTool === 'select') {
       if (lassoBox && x >= Math.min(lassoBox.x, lassoBox.x + lassoBox.w) && x <= Math.max(lassoBox.x, lassoBox.x + lassoBox.w) 
@@ -736,8 +761,8 @@ const DrawingCanvas: React.FC<{ documentId?: string; width?: number; height?: nu
     >
       {/* SVG layer for finalized strokes */}
       <svg
-        width={canvasDims.w}
-        height={canvasDims.h}
+        width="100%"
+        height="100%"
         viewBox={`0 0 ${canvasDims.w} ${canvasDims.h}`}
         style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none', overflow: 'visible' }}
       >

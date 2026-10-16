@@ -7,7 +7,12 @@ type RefModalState = { visible: boolean; x: number; y: number; textId: string | 
 
 const EMPTY_TEXT_ELEMENTS: TextElement[] = [];
 
-const TextLayer: React.FC<{ documentId?: string }> = ({ documentId }) => {
+const TextLayer: React.FC<{
+  documentId?: string;
+  scale?: number;
+  baseWidth?: number;
+  baseHeight?: number;
+}> = ({ documentId, scale: propScale = 1, baseWidth, baseHeight }) => {
   const activeDocumentId = useAppStore(s => s.activeDocumentId);
   const focusedTextId = useAppStore(s => s.focusedTextId);
   const updateTextElement = useAppStore(s => s.updateTextElement);
@@ -38,11 +43,12 @@ const TextLayer: React.FC<{ documentId?: string }> = ({ documentId }) => {
     const el = containerRef.current;
     if (!el) return { x: clientX, y: clientY };
     const rect = el.getBoundingClientRect();
+    const s = propScale || 1;
     return {
-      x: clientX - rect.left,
-      y: clientY - rect.top,
+      x: (clientX - rect.left) / s,
+      y: (clientY - rect.top) / s,
     };
-  }, []);
+  }, [propScale]);
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>, el: TextElement) => {
     if (!effectiveDocId || !isActive) return;
@@ -84,7 +90,20 @@ const TextLayer: React.FC<{ documentId?: string }> = ({ documentId }) => {
   const handlePointerUp = () => setDraggingEl(null);
 
   return (
-    <div ref={containerRef} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 20 }}>
+    <div
+      ref={containerRef}
+      style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: baseWidth ? `${baseWidth}px` : '100%',
+        height: baseHeight ? `${baseHeight}px` : '100%',
+        transform: propScale !== 1 ? `scale(${propScale})` : undefined,
+        transformOrigin: 'top left',
+        pointerEvents: 'none',
+        zIndex: 20,
+      }}
+    >
       {textElements.map(el => (
         <div 
           key={el.id}
