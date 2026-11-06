@@ -199,7 +199,7 @@ const MindMapView: React.FC = () => {
 
   // Interaction refs
   const interactionRef = useRef<{
-    mode: 'none' | 'pan' | 'drag-node' | 'connect-drag' | 'draw' | 'erase';
+    mode: 'none' | 'pan' | 'drag-node' | 'resize-node' | 'connect-drag' | 'draw' | 'erase';
     pointerId: number | null;
     startClientX: number;
     startClientY: number;
@@ -208,6 +208,9 @@ const MindMapView: React.FC = () => {
     nodeId?: string;
     startNodeX?: number;
     startNodeY?: number;
+    startNodeW?: number;
+    startNodeH?: number;
+    resizeDir?: 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
     strokePoints?: Point[];
   }>({
     mode: 'none',
@@ -377,6 +380,32 @@ const MindMapView: React.FC = () => {
     [updateBoard, selectedEdgeId]
   );
 
+  // Allow deleting selected node or connection edge with Delete / Backspace key (when not typing in an input)
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+      const activeEl = document.activeElement as HTMLElement | null;
+      if (
+        activeEl &&
+        (activeEl.tagName === 'INPUT' ||
+          activeEl.tagName === 'TEXTAREA' ||
+          activeEl.tagName === 'SELECT' ||
+          activeEl.isContentEditable)
+      ) {
+        return;
+      }
+      if (selectedNodeId) {
+        e.preventDefault();
+        handleDeleteNode(selectedNodeId);
+      } else if (selectedEdgeId) {
+        e.preventDefault();
+        handleDeleteEdge(selectedEdgeId);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [selectedNodeId, selectedEdgeId, handleDeleteNode, handleDeleteEdge]);
+
   const createEdgeBetween = useCallback(
     (fromId: string, toId: string) => {
       if (!activeBoard || fromId === toId) return;
@@ -457,6 +486,7 @@ const MindMapView: React.FC = () => {
     if ((e.target as HTMLElement).closest('[data-mm-ui]')) return;
     const nodeEl = (e.target as HTMLElement).closest('[data-mm-node-id]') as HTMLElement | null;
     const portEl = (e.target as HTMLElement).closest('[data-mm-port-node]') as HTMLElement | null;
+    const resizeEl = (e.target as HTMLElement).closest('[data-mm-resize-dir]') as HTMLElement | null;
 
     // 1. Port drag to connect ideas
     if (portEl) {
@@ -476,6 +506,54 @@ const MindMapView: React.FC = () => {
         nodeId: fromId,
       };
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      return;
+    }
+
+    // 1b. Drag-to-stretch (resize) a Mind Map node from any edge or corner
+    if (resizeEl && nodeEl) {
+      e.stopPropagation();
+      e.preventDefault();
+      const clickedNodeId = nodeEl.getAttribute('data-mm-node-id')!;
+      const resizeDir = resizeEl.getAttribute('data-mm-resize-dir') as
+        | 'n'
+        | 's'
+        | 'e'
+        | 'w'
+        | 'ne'
+        | 'nw'
+        | 'se'
+        | 'sw';
+      setSelectedNodeId(clickedNodeId);
+      setSelectedEdgeId(null);
+
+      const targetNode = activeBoard?.nodes.find((n) => n.id === clickedNodeId);
+      if (targetNode) {
+        const z = zoomRef.current || 1;
+        const rect = nodeEl.getBoundingClientRect();
+        const measuredW = rect.width > 0 ? Math.round(rect.width / z) : undefined;
+        const measuredH = rect.height > 0 ? Math.round(rect.height / z) : undefined;
+        const startW = targetNode.width || measuredW || (targetNode.type === 'sticky' ? 220 : 260);
+        const startH =
+          targetNode.height ||
+          measuredH ||
+          (targetNode.type === 'sticky' ? 175 : targetNode.type === 'paper' ? 165 : 145);
+
+        interactionRef.current = {
+          mode: 'resize-node',
+          pointerId: e.pointerId,
+          startClientX: e.clientX,
+          startClientY: e.clientY,
+          startPanX: pan.x,
+          startPanY: pan.y,
+          nodeId: clickedNodeId,
+          startNodeX: targetNode.x,
+          startNodeY: targetNode.y,
+          startNodeW: startW,
+          startNodeH: startH,
+          resizeDir,
+        };
+        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      }
       return;
     }
 
@@ -609,6 +687,53 @@ const MindMapView: React.FC = () => {
       handleUpdateNode(state.nodeId, {
         x: Math.round(state.startNodeX + dx),
         y: Math.round(state.startNodeY + dy),
+      });
+      return;
+    }
+
+    if (
+      state.mode === 'resize-node' &&
+      state.nodeId &&
+      state.startNodeX !== undefined &&
+      state.startNodeY !== undefined &&
+      state.startNodeW !== undefined &&
+      state.startNodeH !== undefined &&
+      state.resizeDir
+    ) {
+      const z = zoomRef.current || 1;
+      const dx = (e.clientX - state.startClientX) / z;
+      const dy = (e.clientY - state.startClientY) / z;
+      const MIN_W = 160;
+      const MIN_H = 115;
+
+      let nextX = state.startNodeX;
+      let nextY = state.startNodeY;
+      let nextW = state.startNodeW;
+      let nextH = state.startNodeH;
+      const dir = state.resizeDir;
+
+      if (dir.includes('e')) {
+        nextW = Math.max(MIN_W, state.startNodeW + dx);
+      }
+      if (dir.includes('w')) {
+        const clampedDx = Math.min(dx, state.startNodeW - MIN_W);
+        nextX = state.startNodeX + clampedDx;
+        nextW = state.startNodeW - clampedDx;
+      }
+      if (dir.includes('s')) {
+        nextH = Math.max(MIN_H, state.startNodeH + dy);
+      }
+      if (dir.includes('n')) {
+        const clampedDy = Math.min(dy, state.startNodeH - MIN_H);
+        nextY = state.startNodeY + clampedDy;
+        nextH = state.startNodeH - clampedDy;
+      }
+
+      handleUpdateNode(state.nodeId, {
+        x: Math.round(nextX),
+        y: Math.round(nextY),
+        width: Math.round(nextW),
+        height: Math.round(nextH),
       });
       return;
     }
@@ -1573,6 +1698,7 @@ const MindMapView: React.FC = () => {
               !(node.linkedPaperTitle || '').toLowerCase().includes(q);
 
             const w = node.width || (node.type === 'sticky' ? 220 : 260);
+            const h = node.height;
 
             return (
               <div
@@ -1583,6 +1709,8 @@ const MindMapView: React.FC = () => {
                   left: node.x,
                   top: node.y,
                   width: w,
+                  height: h ? h : undefined,
+                  minHeight: node.type === 'sticky' ? 140 : 120,
                   backgroundColor: tone.bg,
                   border: `2px solid ${isSelected || isConnectSource ? tone.accent : tone.border}`,
                   borderRadius: node.type === 'sticky' ? '4px 4px 16px 4px' : 14,
@@ -1609,6 +1737,7 @@ const MindMapView: React.FC = () => {
                     borderTopRightRadius: node.type === 'sticky' ? 2 : 12,
                     cursor: 'grab',
                     gap: 6,
+                    flexShrink: 0,
                   }}
                 >
                   <span
@@ -1645,6 +1774,8 @@ const MindMapView: React.FC = () => {
                   </span>
 
                   <button
+                    type="button"
+                    onPointerDown={(ev) => ev.stopPropagation()}
                     onClick={(ev) => {
                       ev.stopPropagation();
                       handleDeleteNode(node.id);
@@ -1652,13 +1783,17 @@ const MindMapView: React.FC = () => {
                     title="Delete node"
                     style={{
                       border: 'none',
-                      background: 'transparent',
-                      color: '#64748b',
+                      background: 'rgba(225, 29, 72, 0.08)',
+                      color: '#e11d48',
                       cursor: 'pointer',
-                      fontSize: 13,
+                      fontSize: 12,
+                      fontWeight: 700,
                       lineHeight: 1,
-                      padding: '2px 4px',
-                      borderRadius: 4,
+                      padding: '4px 6px',
+                      borderRadius: 6,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
                     }}
                   >
                     ✕
@@ -1666,7 +1801,16 @@ const MindMapView: React.FC = () => {
                 </div>
 
                 {/* Node Body */}
-                <div style={{ padding: '10px 12px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div
+                  style={{
+                    padding: '10px 12px 12px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 6,
+                    flex: 1,
+                    minHeight: 0,
+                  }}
+                >
                   <input
                     type="text"
                     value={node.title}
@@ -1681,6 +1825,7 @@ const MindMapView: React.FC = () => {
                       outline: 'none',
                       width: '100%',
                       fontFamily: 'var(--font-sans)',
+                      flexShrink: 0,
                     }}
                   />
 
@@ -1696,8 +1841,10 @@ const MindMapView: React.FC = () => {
                       lineHeight: 1.45,
                       color: '#334155',
                       outline: 'none',
-                      resize: 'vertical',
+                      resize: 'none',
                       width: '100%',
+                      flex: 1,
+                      minHeight: node.type === 'sticky' ? 68 : 52,
                       fontFamily: 'var(--font-sans)',
                     }}
                   />
@@ -1716,10 +1863,11 @@ const MindMapView: React.FC = () => {
                         border: `1px solid ${tone.border}`,
                         background: '#ffffff',
                         cursor: 'pointer',
-                        maxHeight: 150,
+                        maxHeight: h ? Math.max(150, h - 135) : 150,
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
+                        flexShrink: 0,
                       }}
                     >
                       <img
@@ -1946,6 +2094,118 @@ const MindMapView: React.FC = () => {
                   )}
                 </div>
 
+                {/* 8-Direction Drag-to-Stretch (Resize) Edge & Corner Handles */}
+                {/* Top & Bottom Edge Stretch Zones */}
+                <div
+                  data-mm-resize-dir="n"
+                  title="Drag to stretch height"
+                  style={{
+                    position: 'absolute',
+                    top: -5,
+                    left: 14,
+                    right: 14,
+                    height: 9,
+                    cursor: 'ns-resize',
+                    zIndex: 2,
+                  }}
+                />
+                <div
+                  data-mm-resize-dir="s"
+                  title="Drag to stretch height"
+                  style={{
+                    position: 'absolute',
+                    bottom: -5,
+                    left: 14,
+                    right: 14,
+                    height: 9,
+                    cursor: 'ns-resize',
+                    zIndex: 2,
+                  }}
+                />
+                {/* Left & Right Edge Stretch Zones */}
+                <div
+                  data-mm-resize-dir="w"
+                  title="Drag to stretch width"
+                  style={{
+                    position: 'absolute',
+                    top: 14,
+                    bottom: 14,
+                    left: -5,
+                    width: 9,
+                    cursor: 'ew-resize',
+                    zIndex: 2,
+                  }}
+                />
+                <div
+                  data-mm-resize-dir="e"
+                  title="Drag to stretch width"
+                  style={{
+                    position: 'absolute',
+                    top: 14,
+                    bottom: 14,
+                    right: -5,
+                    width: 9,
+                    cursor: 'ew-resize',
+                    zIndex: 2,
+                  }}
+                />
+                {/* 4 Corner Stretch Handles (NW, NE, SW, SE) */}
+                {(['nw', 'ne', 'sw', 'se'] as const).map((corner) => {
+                  const posStyle: React.CSSProperties =
+                    corner === 'nw'
+                      ? { top: -6, left: -6, cursor: 'nwse-resize' }
+                      : corner === 'ne'
+                      ? { top: -6, right: -6, cursor: 'nesw-resize' }
+                      : corner === 'sw'
+                      ? { bottom: -6, left: -6, cursor: 'nesw-resize' }
+                      : { bottom: -6, right: -6, cursor: 'nwse-resize' };
+
+                  return (
+                    <div
+                      key={corner}
+                      data-mm-resize-dir={corner}
+                      title="Drag corner to stretch node"
+                      style={{
+                        position: 'absolute',
+                        ...posStyle,
+                        width: 14,
+                        height: 14,
+                        zIndex: 4,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      {isSelected ? (
+                        <div
+                          style={{
+                            width: 9,
+                            height: 9,
+                            borderRadius: 2.5,
+                            backgroundColor: '#ffffff',
+                            border: `2px solid ${tone.accent}`,
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                          }}
+                        />
+                      ) : corner === 'se' ? (
+                        <svg
+                          width="10"
+                          height="10"
+                          viewBox="0 0 10 10"
+                          style={{ position: 'absolute', right: 7, bottom: 7, opacity: 0.45, pointerEvents: 'none' }}
+                        >
+                          <path
+                            d="M 9 2 L 2 9 M 9 6 L 6 9"
+                            stroke={tone.accent}
+                            strokeWidth="1.5"
+                            strokeLinecap="round"
+                          />
+                        </svg>
+                      ) : null}
+                    </div>
+                  );
+                })}
+
                 {/* 4 Connection / Sprout Handles (Top, Right, Bottom, Left) */}
                 {(['top', 'right', 'bottom', 'left'] as const).map((side) => {
                   const posStyle: React.CSSProperties =
@@ -1983,6 +2243,7 @@ const MindMapView: React.FC = () => {
                         cursor: 'crosshair',
                         opacity: isSelected || tool === 'connect' ? 1 : 0.65,
                         boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
+                        zIndex: 5,
                       }}
                     >
                       +
@@ -2059,6 +2320,28 @@ const MindMapView: React.FC = () => {
               }}
             >
               {selectedNode.linkedPaperTitle ? 'Change Linked Paper' : 'Attach Paper'}
+            </Button>
+
+            {(selectedNode.width || selectedNode.height) && (
+              <Button
+                onClick={() =>
+                  handleUpdateNode(selectedNode.id, {
+                    width: selectedNode.type === 'sticky' ? 220 : 260,
+                    height: undefined,
+                  })
+                }
+              >
+                Reset Size
+              </Button>
+            )}
+
+            <div style={{ width: 1, height: 18, background: 'var(--line)' }} />
+
+            <Button
+              icon="trash"
+              onClick={() => handleDeleteNode(selectedNode.id)}
+            >
+              Delete Node
             </Button>
           </div>
         )}
