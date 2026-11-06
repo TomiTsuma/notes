@@ -670,23 +670,126 @@ const MindMapView: React.FC = () => {
     };
   };
 
-  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+  const handleWheel = useCallback((e: WheelEvent | React.WheelEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const rect = viewportRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    const modeMultiplier = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 100 : 1;
+    const rawDeltaX = e.deltaX * modeMultiplier;
+    const rawDeltaY = e.deltaY * modeMultiplier;
+
     if (e.ctrlKey || e.metaKey) {
-      e.preventDefault();
-      const rect = viewportRef.current?.getBoundingClientRect();
-      if (!rect) return;
       const cursorX = e.clientX - rect.left;
       const cursorY = e.clientY - rect.top;
-      const factor = e.deltaY > 0 ? 0.92 : 1.08;
-      const nextZoom = Math.max(0.25, Math.min(2.5, Number((zoom * factor).toFixed(3))));
-      const nextPanX = cursorX - ((cursorX - pan.x) / zoom) * nextZoom;
-      const nextPanY = cursorY - ((cursorY - pan.y) / zoom) * nextZoom;
+      const currentZoom = zoomRef.current || 1;
+      const currentPan = panRef.current;
+
+      // Damped proportional zoom: prevents trackpad pinch from jumping 8% on every 120Hz frame
+      const clampedDeltaY = Math.max(-35, Math.min(35, rawDeltaY));
+      const ZOOM_SENSITIVITY = 0.0022;
+      const factor = Math.exp(-clampedDeltaY * ZOOM_SENSITIVITY);
+
+      const nextZoom = Math.max(0.25, Math.min(2.5, Number((currentZoom * factor).toFixed(4))));
+      const nextPanX = cursorX - ((cursorX - currentPan.x) / currentZoom) * nextZoom;
+      const nextPanY = cursorY - ((cursorY - currentPan.y) / currentZoom) * nextZoom;
+
+      zoomRef.current = nextZoom;
+      panRef.current = { x: nextPanX, y: nextPanY };
       setZoom(nextZoom);
       setPan({ x: nextPanX, y: nextPanY });
     } else {
-      setPan((prev) => ({ x: prev.x - e.deltaX, y: prev.y - e.deltaY }));
+      // Damped two-finger scroll pan so trackpad momentum doesn't fly across the board
+      const SCROLL_DAMPING = 0.42;
+      const dx = Math.max(-60, Math.min(60, rawDeltaX)) * SCROLL_DAMPING;
+      const dy = Math.max(-60, Math.min(60, rawDeltaY)) * SCROLL_DAMPING;
+      const nextPan = {
+        x: panRef.current.x - dx,
+        y: panRef.current.y - dy,
+      };
+      panRef.current = nextPan;
+      setPan(nextPan);
     }
-  };
+  }, []);
+
+  // Attach non-passive wheel and damped two-finger touch pinch-to-zoom listeners
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+
+    const onWheelNative = (e: WheelEvent) => {
+      handleWheel(e);
+    };
+
+    let pinchStartDist: number | null = null;
+    let pinchStartZoom = 1;
+    let pinchStartPan = { x: 0, y: 0 };
+    let pinchStartMid = { x: 0, y: 0 };
+
+    const getTouchMetrics = (t1: Touch, t2: Touch, rect: DOMRect) => ({
+      dist: Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY),
+      midX: (t1.clientX + t2.clientX) / 2 - rect.left,
+      midY: (t1.clientY + t2.clientY) / 2 - rect.top,
+    });
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        const rect = el.getBoundingClientRect();
+        const { dist, midX, midY } = getTouchMetrics(e.touches[0], e.touches[1], rect);
+        pinchStartDist = Math.max(10, dist);
+        pinchStartZoom = zoomRef.current || 1;
+        pinchStartPan = { ...panRef.current };
+        pinchStartMid = { x: midX, y: midY };
+        // Cancel any single-finger drag/pan when second finger touches down
+        interactionRef.current.mode = 'none';
+        interactionRef.current.pointerId = null;
+      }
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 2 && pinchStartDist !== null) {
+        if (e.cancelable) e.preventDefault();
+        const rect = el.getBoundingClientRect();
+        const { dist, midX, midY } = getTouchMetrics(e.touches[0], e.touches[1], rect);
+        const rawRatio = dist / pinchStartDist;
+        // Damp touch pinch ratio so zoom feels smooth and controlled
+        const TOUCH_PINCH_DAMPING = 0.45;
+        const dampedRatio = Math.max(0.2, 1 + (rawRatio - 1) * TOUCH_PINCH_DAMPING);
+        const nextZoom = Math.max(0.25, Math.min(2.5, Number((pinchStartZoom * dampedRatio).toFixed(4))));
+
+        // World point under initial pinch midpoint stays anchored while following two-finger midpoint pan
+        const worldX = (pinchStartMid.x - pinchStartPan.x) / pinchStartZoom;
+        const worldY = (pinchStartMid.y - pinchStartPan.y) / pinchStartZoom;
+        const nextPanX = midX - worldX * nextZoom;
+        const nextPanY = midY - worldY * nextZoom;
+
+        zoomRef.current = nextZoom;
+        panRef.current = { x: nextPanX, y: nextPanY };
+        setZoom(nextZoom);
+        setPan({ x: nextPanX, y: nextPanY });
+      }
+    };
+
+    const onTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length < 2) {
+        pinchStartDist = null;
+      }
+    };
+
+    el.addEventListener('wheel', onWheelNative, { passive: false });
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    el.addEventListener('touchend', onTouchEnd, { passive: true });
+    el.addEventListener('touchcancel', onTouchEnd, { passive: true });
+
+    return () => {
+      el.removeEventListener('wheel', onWheelNative);
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
+      el.removeEventListener('touchend', onTouchEnd);
+      el.removeEventListener('touchcancel', onTouchEnd);
+    };
+  }, [handleWheel]);
 
   const handleDoubleClickCanvas = (e: React.MouseEvent<HTMLDivElement>) => {
     if ((e.target as HTMLElement).closest('[data-mm-node-id]') || (e.target as HTMLElement).closest('[data-mm-ui]')) {
@@ -1248,7 +1351,6 @@ const MindMapView: React.FC = () => {
         onPointerMove={handleCanvasPointerMove}
         onPointerUp={handleCanvasPointerUp}
         onPointerCancel={handleCanvasPointerUp}
-        onWheel={handleWheel}
         onDoubleClick={handleDoubleClickCanvas}
         style={{
           flex: 1,
