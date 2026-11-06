@@ -931,23 +931,29 @@ app.post('/api/auth/custom-token', async (req, res) => {
       return res.status(400).json({ error: 'No Google account email available for custom token' });
     }
     const uid = `google:${email.toLowerCase()}`;
-    const customToken = createFirebaseCustomToken(uid, { email, name });
     const webConfig = await getFirebaseWebConfig(req.hostname);
-
-    // Exchange custom token for a real Firebase ID token via Identity Toolkit
-    const exchangeRes = await fetch(
-      `https://identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key=${encodeURIComponent(webConfig.apiKey)}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: customToken, returnSecureToken: true }),
-      }
-    );
-
+    let customToken = '';
     let idToken = '';
-    if (exchangeRes.ok) {
-      const exData = await exchangeRes.json();
-      idToken = exData.idToken || '';
+
+    try {
+      customToken = createFirebaseCustomToken(uid, { email, name });
+      // Exchange custom token for a real Firebase ID token via Identity Toolkit
+      const exchangeRes = await fetch(
+        `https://identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key=${encodeURIComponent(webConfig.apiKey)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: customToken, returnSecureToken: true }),
+        }
+      );
+      if (exchangeRes.ok) {
+        const exData = await exchangeRes.json();
+        idToken = exData.idToken || '';
+      } else {
+        customToken = '';
+      }
+    } catch {
+      customToken = '';
     }
 
     const user = {
