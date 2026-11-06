@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { ReactNode, CSSProperties, ButtonHTMLAttributes, HTMLAttributes } from 'react';
 import { Icon, ICONS } from './icons';
+import { RichMarkdown } from '../RichMarkdown';
 
 const cx = (...a: (string | boolean | undefined | null)[]) => a.filter(Boolean).join(' ');
 const TINTS = ['rose', 'sky', 'sage', 'amber', 'lilac', 'stone'] as const;
@@ -1179,169 +1180,8 @@ export function StreakCard({ days = 12, week = [1, 1, 1, 1, 0, 0, 0], todayIndex
 }
 
 /* ---------------- AI ---------------- */
-export function Markdown({ children }: { children: ReactNode }) {
-  if (typeof children !== 'string') {
-    return <div className="md">{children}</div>;
-  }
-
-  const text = children;
-  if (!text.trim()) return null;
-
-  const parseInline = (str: string): ReactNode[] => {
-    const parts = str.split(/(`[^`]+`|\*\*[^*]+\*\*|__[^_]+__|(?:\b|_)\*[^*]+\*(?:\b|_)|~~[^~]+~~|\[[^\]]+\]\([^)]+\))/g);
-    return parts.map((part, idx) => {
-      if (!part) return null;
-      if (part.startsWith('`') && part.endsWith('`')) {
-        return <code key={idx}>{part.slice(1, -1)}</code>;
-      }
-      if ((part.startsWith('**') && part.endsWith('**')) || (part.startsWith('__') && part.endsWith('__'))) {
-        return <strong key={idx}>{part.slice(2, -2)}</strong>;
-      }
-      if ((part.startsWith('*') && part.endsWith('*')) || (part.startsWith('_') && part.endsWith('_'))) {
-        return <em key={idx}>{part.slice(1, -1)}</em>;
-      }
-      if (part.startsWith('~~') && part.endsWith('~~')) {
-        return <del key={idx}>{part.slice(2, -2)}</del>;
-      }
-      const linkMatch = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
-      if (linkMatch) {
-        return (
-          <a key={idx} href={linkMatch[2]} target="_blank" rel="noopener noreferrer">
-            {linkMatch[1]}
-          </a>
-        );
-      }
-      return part;
-    });
-  };
-
-  const lines = text.split('\n');
-  const elements: ReactNode[] = [];
-  let inCodeBlock = false;
-  let codeBlockLines: string[] = [];
-  let currentList: ReactNode[] = [];
-  let isNumberedList = false;
-
-  const flushList = (key: string) => {
-    if (currentList.length > 0) {
-      if (isNumberedList) {
-        elements.push(<ol key={`ol-${key}`}>{currentList}</ol>);
-      } else {
-        elements.push(<ul key={`ul-${key}`}>{currentList}</ul>);
-      }
-      currentList = [];
-    }
-  };
-
-  lines.forEach((line, i) => {
-    const trimmed = line.trim();
-
-    if (trimmed.startsWith('```')) {
-      if (inCodeBlock) {
-        elements.push(
-          <pre
-            key={`code-${i}`}
-            style={{
-              background: 'var(--surface-inset)',
-              padding: '10px 12px',
-              borderRadius: 6,
-              overflowX: 'auto',
-              fontSize: 13,
-              fontFamily: 'var(--font-mono)',
-              margin: '8px 0',
-            }}
-          >
-            <code>{codeBlockLines.join('\n')}</code>
-          </pre>
-        );
-        codeBlockLines = [];
-        inCodeBlock = false;
-      } else {
-        flushList(`before-code-${i}`);
-        inCodeBlock = true;
-      }
-      return;
-    }
-
-    if (inCodeBlock) {
-      codeBlockLines.push(line);
-      return;
-    }
-
-    if (trimmed === '---' || trimmed === '***' || trimmed === '___') {
-      flushList(`hr-${i}`);
-      elements.push(<hr key={`hr-${i}`} style={{ border: 'none', borderTop: '1px solid var(--line)', margin: '12px 0' }} />);
-      return;
-    }
-
-    const bulletMatch = trimmed.match(/^([-*+])\s+(.*)/);
-    const numMatch = trimmed.match(/^(\d+)\.\s+(.*)/);
-
-    if (bulletMatch) {
-      if (isNumberedList) flushList(`num-to-bullet-${i}`);
-      isNumberedList = false;
-      currentList.push(<li key={`li-${i}`}>{parseInline(bulletMatch[2])}</li>);
-      return;
-    }
-
-    if (numMatch) {
-      if (!isNumberedList) flushList(`bullet-to-num-${i}`);
-      isNumberedList = true;
-      currentList.push(<li key={`li-${i}`}>{parseInline(numMatch[2])}</li>);
-      return;
-    }
-
-    flushList(`end-list-${i}`);
-
-    if (trimmed.startsWith('# ')) {
-      elements.push(<h2 key={i}>{parseInline(trimmed.slice(2))}</h2>);
-    } else if (trimmed.startsWith('## ')) {
-      elements.push(<h3 key={i}>{parseInline(trimmed.slice(3))}</h3>);
-    } else if (trimmed.startsWith('### ')) {
-      elements.push(<h4 key={i}>{parseInline(trimmed.slice(4))}</h4>);
-    } else if (trimmed.startsWith('#### ')) {
-      elements.push(<h4 key={i}>{parseInline(trimmed.slice(5))}</h4>);
-    } else if (trimmed.startsWith('> ')) {
-      elements.push(
-        <blockquote
-          key={i}
-          style={{
-            borderLeft: '3px solid var(--ai-ink)',
-            paddingLeft: 10,
-            margin: '8px 0',
-            color: 'var(--ink-2)',
-            fontStyle: 'italic',
-          }}
-        >
-          {parseInline(trimmed.slice(2))}
-        </blockquote>
-      );
-    } else if (trimmed.length > 0) {
-      elements.push(<p key={i}>{parseInline(trimmed)}</p>);
-    }
-  });
-
-  flushList('final');
-  if (inCodeBlock && codeBlockLines.length > 0) {
-    elements.push(
-      <pre
-        key="code-final"
-        style={{
-          background: 'var(--surface-inset)',
-          padding: '10px 12px',
-          borderRadius: 6,
-          overflowX: 'auto',
-          fontSize: 13,
-          fontFamily: 'var(--font-mono)',
-          margin: '8px 0',
-        }}
-      >
-        <code>{codeBlockLines.join('\n')}</code>
-      </pre>
-    );
-  }
-
-  return <div className="md">{elements.length > 0 ? elements : parseInline(text)}</div>;
+export function Markdown({ children, streaming }: { children: ReactNode; streaming?: boolean }) {
+  return <RichMarkdown streaming={streaming}>{children}</RichMarkdown>;
 }
 
 export function ChatMessage({
@@ -1352,6 +1192,7 @@ export function ChatMessage({
   loading,
   actions = true,
   onInsert,
+  onRegenerate,
 }: {
   role?: 'user' | 'assistant';
   children: ReactNode;
@@ -1360,8 +1201,20 @@ export function ChatMessage({
   loading?: boolean;
   actions?: boolean;
   onInsert?: () => void;
+  onRegenerate?: () => void;
 }) {
+  const [copied, setCopied] = useState(false);
+
   if (role === 'user') return <div className="cl-msg-user">{children}</div>;
+
+  const handleCopy = () => {
+    if (typeof children === 'string') {
+      navigator.clipboard?.writeText(children);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    }
+  };
+
   return (
     <div className="cl-msg-ai">
       {thought && (
@@ -1371,29 +1224,26 @@ export function ChatMessage({
           <Icon name="chevron-right" size={14} />
         </button>
       )}
-      <Markdown>
-        {loading ? (
+      {loading ? (
+        <div className="md">
           <span className="cl-row" style={{ gap: 8, color: 'var(--ink-2)' }}>
             <span className="cl-sync is-busy" style={{ padding: 0 }}><i /></span>
             {children}
           </span>
-        ) : (
-          <>
-            {children}
-            {streaming && <span className="cl-caret" />}
-          </>
-        )}
-      </Markdown>
+        </div>
+      ) : (
+        <Markdown streaming={streaming}>{children}</Markdown>
+      )}
       {actions && !streaming && !loading && (
         <div className="cl-msg-acts">
           <Button variant="ghost" size="sm" icon="arrow-up-right" onClick={onInsert}>
             Insert into note
           </Button>
           <span className="sep" />
-          <IconButton icon="copy" label="Copy" iconSize={15} />
+          <IconButton icon={copied ? 'check' : 'copy'} label={copied ? 'Copied' : 'Copy'} iconSize={15} onClick={handleCopy} />
           <IconButton icon="thumb-up" label="Good response" iconSize={15} />
           <IconButton icon="thumb-down" label="Bad response" iconSize={15} />
-          <IconButton icon="refresh" label="Regenerate" iconSize={15} />
+          {onRegenerate && <IconButton icon="refresh" label="Regenerate" iconSize={15} onClick={onRegenerate} />}
         </div>
       )}
     </div>
@@ -1605,11 +1455,12 @@ export interface AIPanelProps {
   children?: ReactNode | ((tab: string) => ReactNode);
   footer?: ReactNode;
   onClose?: () => void;
+  onClear?: () => void;
   onSend?: (msg: string) => void;
   busy?: boolean;
 }
 
-export function AIPanel({ tab = 'chat', file, children, footer, onClose, onSend, busy }: AIPanelProps) {
+export function AIPanel({ tab = 'chat', file, children, footer, onClose, onClear, onSend, busy }: AIPanelProps) {
   const [t, setT] = useState(tab);
   return (
     <aside className="cl-ai" aria-label="Clio AI">
@@ -1621,8 +1472,8 @@ export function AIPanel({ tab = 'chat', file, children, footer, onClose, onSend,
           <Icon name="chevron-down" size={14} className="cl-faint" />
         </span>
         <span className="cl-row" style={{ gap: 0 }}>
-          <IconButton icon="edit" label="New chat" />
-          <IconButton icon="trash" label="Clear chat history" />
+          <IconButton icon="edit" label="New chat" onClick={onClear} />
+          <IconButton icon="trash" label="Clear chat history" onClick={onClear} />
           <IconButton icon="x" label="Close panel" onClick={onClose} />
         </span>
       </div>

@@ -55,7 +55,119 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true });
+  res.json({ ok: true, ollamaUrl: process.env.OLLAMA_URL || 'http://100.101.189.31:11434' });
+});
+
+// Ollama AI Proxy (supports streaming /api/generate + automatic port & model discovery on 100.101.189.31)
+function getOllamaCandidateBaseUrls() {
+  const raw = (process.env.OLLAMA_URL || 'http://100.101.189.31:11434').trim().replace(/\/+$/, '');
+  const withProtocol = /^https?:\/\//i.test(raw) ? raw : `http://${raw}`;
+  const candidates = [withProtocol];
+  try {
+    const parsed = new URL(withProtocol);
+    if (!parsed.port) {
+      candidates.unshift(`${parsed.protocol}//${parsed.hostname}:11434`);
+    } else if (parsed.port === '11434') {
+      candidates.push(`${parsed.protocol}//${parsed.hostname}`);
+    }
+  } catch {
+    // ignore URL parse error
+  }
+  return Array.from(new Set(candidates));
+}
+
+async function resolveFallbackOllamaModel(baseUrl) {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 3500);
+    const resp = await fetch(`${baseUrl}/api/tags`, { signal: controller.signal });
+    clearTimeout(timer);
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    const models = Array.isArray(data?.models) ? data.models.map((m) => m.name).filter(Boolean) : [];
+    if (models.length === 0) return null;
+    const preferred = models.find((n) => /researcher|qwen|gemma|llama|deepseek/i.test(n));
+    return preferred || models[0];
+  } catch {
+    return null;
+  }
+}
+
+app.post('/api/ollama', async (req, res) => {
+  const candidates = getOllamaCandidateBaseUrls();
+  const payload = req.body && typeof req.body === 'object' ? { ...req.body } : {};
+  if (process.env.OLLAMA_MODEL && (!payload.model || payload.model === 'qwen3.5:researcher')) {
+    payload.model = process.env.OLLAMA_MODEL;
+  }
+
+  let lastError = null;
+
+  for (const baseUrl of candidates) {
+    try {
+      const targetUrl = new URL(`${baseUrl}/api/generate`);
+      const protocol = targetUrl.protocol === 'https:' ? https : http;
+
+      const attemptRequest = (bodyObj) =>
+        new Promise((resolve, reject) => {
+          const bodyStr = JSON.stringify(bodyObj);
+          const proxyReq = protocol.request(
+            {
+              hostname: targetUrl.hostname,
+              port: targetUrl.port || (targetUrl.protocol === 'https:' ? 443 : 80),
+              path: `${targetUrl.pathname}${targetUrl.search}`,
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(bodyStr),
+              },
+              timeout: 8000,
+            },
+            (proxyRes) => {
+              resolve({ proxyReq, proxyRes });
+            }
+          );
+
+          proxyReq.on('timeout', () => {
+            proxyReq.destroy(new Error(`Connection timeout to ${baseUrl}`));
+          });
+          proxyReq.on('error', (err) => reject(err));
+          proxyReq.write(bodyStr);
+          proxyReq.end();
+        });
+
+      let { proxyRes } = await attemptRequest(payload);
+
+      // If the requested model isn't found on this Ollama instance, auto-discover an available model
+      if (proxyRes.statusCode === 404) {
+        proxyRes.resume();
+        const fallbackModel = await resolveFallbackOllamaModel(baseUrl);
+        if (fallbackModel && fallbackModel !== payload.model) {
+          console.log(`[Ollama Proxy] Model '${payload.model}' not found on ${baseUrl}; using '${fallbackModel}'`);
+          const retry = await attemptRequest({ ...payload, model: fallbackModel });
+          proxyRes = retry.proxyRes;
+        }
+      }
+
+      res.writeHead(proxyRes.statusCode || 200, {
+        'Content-Type': proxyRes.headers['content-type'] || 'application/x-ndjson',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+      });
+      proxyRes.pipe(res);
+      return;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+
+  console.error('Ollama backend proxy error:', lastError?.message || lastError);
+  if (!res.headersSent) {
+    res.status(502).json({
+      error: 'Ollama proxy connection failed',
+      target: candidates[0],
+      details: lastError?.message || 'Unreachable',
+    });
+  }
 });
 
 // Nextcloud WebDAV Proxy
