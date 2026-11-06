@@ -21,6 +21,7 @@ const PERSIST_KEYS = [
   'calendarViewMode',
   'projects', 'kanbanTasks', 'calendarEvents', 'chatHistory', 'userStreak',
   'mindMapBoards', 'activeMindMapId',
+  'palmRejection', 'markerStraightMode',
 ];
 
 function isDataUrl(value) {

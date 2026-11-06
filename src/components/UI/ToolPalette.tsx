@@ -123,6 +123,8 @@ const ToolPalette: React.FC = () => {
         <ToolDock
           active={activeTool}
           color={swatchToken}
+          palmRejection={palmRejection}
+          onTogglePalmRejection={togglePalmRejection}
           onSelect={handleSelectTool}
           onUndo={undo}
           onClear={handleClear}

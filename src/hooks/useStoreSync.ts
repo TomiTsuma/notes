@@ -25,6 +25,9 @@ export function useStoreSync() {
 
         if (!empty && state) {
           const loadedState = state as Record<string, unknown>;
+          if (loadedState.palmRejection === undefined) {
+            loadedState.palmRejection = true;
+          }
           if (loadedState.nextcloudPapersPath === '/Papers') {
             loadedState.nextcloudPapersPath = '/';
           }

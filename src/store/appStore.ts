@@ -370,7 +370,7 @@ export const useAppStore = create<AppState>()((set) => ({
       activeTool: 'pen',
       brushColor: '#1c1c1e',
       brushSize: 4,
-      palmRejection: false,
+      palmRejection: true,
       markerStraightMode: false,
       dailyTodos: [],
       focusedTextId: null,

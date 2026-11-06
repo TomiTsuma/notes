@@ -1651,6 +1651,8 @@ export interface ToolDockProps {
   active?: string;
   color?: string;
   tools?: typeof TOOLS;
+  palmRejection?: boolean;
+  onTogglePalmRejection?: () => void;
   onSelect?: (toolId: string) => void;
   onUndo?: () => void;
   onRedo?: () => void;
@@ -1658,7 +1660,18 @@ export interface ToolDockProps {
   onAddPage?: () => void;
 }
 
-export function ToolDock({ active = 'pen', color = 'pen-black', tools = TOOLS, onSelect, onUndo, onRedo, onClear, onAddPage }: ToolDockProps) {
+export function ToolDock({
+  active = 'pen',
+  color = 'pen-black',
+  tools = TOOLS,
+  palmRejection = true,
+  onTogglePalmRejection,
+  onSelect,
+  onUndo,
+  onRedo,
+  onClear,
+  onAddPage,
+}: ToolDockProps) {
   const [a, setA] = useState(active);
   const cur = onSelect ? active : a;
   return (
@@ -1681,6 +1694,21 @@ export function ToolDock({ active = 'pen', color = 'pen-black', tools = TOOLS, o
         </button>
       ))}
       <span className="sep" />
+      <IconButton
+        icon="hand"
+        label={palmRejection ? 'Touch Scroll: ON (Touch scrolls PDF, Stylus draws)' : 'Touch Scroll: OFF (Touch draws on PDF)'}
+        active={palmRejection}
+        onClick={onTogglePalmRejection}
+        style={
+          palmRejection
+            ? {
+                background: 'rgba(10, 122, 255, 0.14)',
+                color: 'var(--accent-color, #007aff)',
+                border: '1px solid rgba(10, 122, 255, 0.35)',
+              }
+            : undefined
+        }
+      />
       <IconButton icon="plus" label="Add page" onClick={onAddPage} />
       <IconButton icon="undo" label="Undo" onClick={onUndo} />
       <IconButton icon="redo" label="Redo" onClick={onRedo} />
@@ -1758,11 +1786,16 @@ export function ToolPopover({
         </div>
       )}
       <div className="cl-toggle" style={{ borderTop: '1px solid var(--line)', paddingTop: 12 }}>
-        <span className="cl-row" style={{ gap: 8 }}>
-          <Icon name="hand" size={16} className="cl-muted" />
-          Palm rejection
-        </span>
-        <Switch on={palmRejection} onChange={onPalmRejectionChange} label="Palm rejection" />
+        <div className="cl-row" style={{ gap: 8, alignItems: 'flex-start' }}>
+          <Icon name="hand" size={16} className="cl-muted" style={{ marginTop: 2 }} />
+          <div>
+            <div style={{ fontWeight: 500, fontSize: 13, lineHeight: '18px' }}>Touch to scroll</div>
+            <div style={{ fontSize: 11, color: 'var(--ink-3, #8e887f)', lineHeight: '14px' }}>
+              Touch anywhere on PDF to scroll; stylus draws
+            </div>
+          </div>
+        </div>
+        <Switch on={palmRejection} onChange={onPalmRejectionChange} label="Touch to scroll" />
       </div>
     </div>
   );

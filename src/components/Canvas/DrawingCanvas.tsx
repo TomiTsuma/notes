@@ -423,6 +423,7 @@ const DrawingCanvas: React.FC<{
     };
 
     const onPointerUp = (e: PointerEvent) => {
+      el.style.touchAction = palmRejectionRef.current ? 'pan-x pan-y' : 'none';
       if (palmRejectionRef.current && e.pointerType === 'touch') return;
       if (e.pointerId !== drawingPointerIdRef.current) return;
       if (isErasingRef.current) {
@@ -491,21 +492,40 @@ const DrawingCanvas: React.FC<{
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
 
+    let lastPointerType = 'mouse';
+
     // Native pointerdown / touchstart listeners with passive: false to prevent browser drag/scroll gestures
     const onNativePointerDown = (e: PointerEvent) => {
+      lastPointerType = e.pointerType;
       updateRect();
+      // When Touch Scroll (palmRejection) is ON, finger touches must scroll the PDF natively, never draw
+      if (palmRejectionRef.current && e.pointerType === 'touch') {
+        el.style.touchAction = 'pan-x pan-y';
+        return;
+      }
       if ((e.target as Element).closest?.('.text-element')) return;
       const tool = activeToolRef.current;
       if (CANVAS_TOOLS.includes(tool)) {
+        el.style.touchAction = 'none';
         if (e.cancelable) e.preventDefault();
       }
     };
 
     const onNativeTouchStart = (e: TouchEvent) => {
       updateRect();
+      // When Touch Scroll (palmRejection) is ON, allow finger touches anywhere on the PDF to scroll
+      if (palmRejectionRef.current) {
+        const firstTouch = e.touches?.[0] as (Touch & { touchType?: string }) | undefined;
+        const isStylusTouch = firstTouch?.touchType === 'stylus' || lastPointerType === 'pen';
+        if (!isStylusTouch) {
+          el.style.touchAction = 'pan-x pan-y';
+          return;
+        }
+      }
       if ((e.target as Element).closest?.('.text-element')) return;
       const tool = activeToolRef.current;
       if (CANVAS_TOOLS.includes(tool)) {
+        el.style.touchAction = 'none';
         if (e.cancelable) e.preventDefault();
       }
     };
@@ -658,6 +678,7 @@ const DrawingCanvas: React.FC<{
   }, [activeTool, lassoBox, effectiveDocId, activeDocumentId, addTextElement, setFocusedTextId, eraseAt, brushColor, brushSize, palmRejection, markerStraightMode]);
 
   const handlePointerMoveReact = useCallback((e: React.PointerEvent) => {
+    if (palmRejection && e.pointerType === 'touch') return;
     if (activeTool !== 'select' || isDrawingRef.current) return;
     if (!effectiveDocId) return;
     const coords = getCoords(e.clientX, e.clientY);
@@ -668,9 +689,10 @@ const DrawingCanvas: React.FC<{
     } else if (lassoBox) {
       setLassoBox({ ...lassoBox, w: x - lassoBox.x, h: y - lassoBox.y });
     }
-  }, [activeTool, effectiveDocId, isDraggingLasso, lassoBox]);
+  }, [activeTool, effectiveDocId, isDraggingLasso, lassoBox, palmRejection]);
 
-  const handlePointerUpReact = useCallback(() => {
+  const handlePointerUpReact = useCallback((e: React.PointerEvent) => {
+    if (palmRejection && e.pointerType === 'touch') return;
     if (activeTool !== 'select') return;
     if (isDraggingLasso && lassoBox) {
       translateStrokes(effectiveDocId!, selectedIndices, lassoOffset.x, lassoOffset.y);
@@ -693,7 +715,7 @@ const DrawingCanvas: React.FC<{
       setSelectedIndices(selected);
     }
     dragStartRef.current = null;
-  }, [activeTool, effectiveDocId, lassoBox, isDraggingLasso, lassoOffset, selectedIndices, strokes, translateStrokes]);
+  }, [activeTool, effectiveDocId, lassoBox, isDraggingLasso, lassoOffset, selectedIndices, strokes, translateStrokes, palmRejection]);
   
   useEffect(() => {
     return () => {
@@ -726,7 +748,7 @@ const DrawingCanvas: React.FC<{
         left: 0,
         width: '100%',
         height: '100%',
-        touchAction: 'none',
+        touchAction: palmRejection ? 'pan-x pan-y' : 'none',
         pointerEvents: 'auto',
         userSelect: 'none',
         WebkitUserSelect: 'none',

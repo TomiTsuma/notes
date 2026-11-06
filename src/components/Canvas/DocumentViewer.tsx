@@ -28,7 +28,7 @@ type SpreadMode = 'fit-width' | 'fit-page' | 'two-page' | 'custom';
 const ZOOM_PRESETS = [50, 75, 90, 100, 110, 125, 140, 160, 180, 200, 250, 300];
 
 const DocumentViewer: React.FC = () => {
-  const { activeDocumentId, files, updateFile, tags, addTag, setFileTags } = useAppStore();
+  const { activeDocumentId, files, updateFile, tags, addTag, setFileTags, palmRejection, togglePalmRejection } = useAppStore();
   const [numPages, setNumPages] = useState<number | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [overlayHeight, setOverlayHeight] = useState(0);
@@ -454,6 +454,38 @@ const DocumentViewer: React.FC = () => {
 
         {/* Right: PDF Spread & View Controls */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {/* Touch Scroll Only Toggle (ON by default) */}
+          <button
+            onClick={togglePalmRejection}
+            title={
+              palmRejection
+                ? 'Touch Scroll is ON: touching anywhere on the PDF scrolls (use stylus/mouse to draw). Click to toggle OFF.'
+                : 'Touch Scroll is OFF: touching the PDF draws with the active tool. Click to toggle ON.'
+            }
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 5,
+              padding: '4px 10px',
+              borderRadius: '6px',
+              border: palmRejection ? '1px solid rgba(10, 122, 255, 0.35)' : '1px solid var(--line)',
+              cursor: 'pointer',
+              fontSize: 12,
+              fontWeight: 600,
+              background: palmRejection ? 'rgba(10, 122, 255, 0.12)' : 'var(--bg-inset, rgba(0,0,0,0.05))',
+              color: palmRejection ? 'var(--accent-color, #007aff)' : 'var(--text-secondary, #86868b)',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 11V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v0" />
+              <path d="M14 10V4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v2" />
+              <path d="M10 10.5V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v8" />
+              <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15" />
+            </svg>
+            <span>Touch Scroll: {palmRejection ? 'ON' : 'OFF'}</span>
+          </button>
+
           {/* Mode Switchers */}
           <div
             style={{
@@ -752,6 +784,8 @@ const DocumentViewer: React.FC = () => {
           flex: 1,
           overflowY: 'auto',
           overflowX: 'auto',
+          WebkitOverflowScrolling: 'touch',
+          touchAction: 'pan-x pan-y',
           display: 'flex',
           justifyContent: 'center',
           alignItems: 'flex-start',
@@ -768,7 +802,7 @@ const DocumentViewer: React.FC = () => {
               position: 'relative',
               display: 'inline-block',
               width: computedPageWidth,
-              touchAction: 'none',
+              touchAction: palmRejection ? 'pan-x pan-y' : 'none',
             }}
           >
             <div ref={pdfContentRef} style={{ display: 'flow-root' }}>

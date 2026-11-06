@@ -7,6 +7,7 @@ const NotebookViewer: React.FC = () => {
   const {
     activeDocumentId, files, annotations,
     addNotebookPage, deleteNotebookPage, setActiveDocument,
+    palmRejection,
   } = useAppStore();
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -172,7 +173,7 @@ const NotebookViewer: React.FC = () => {
               overflow: 'hidden',
               flexShrink: 0,
               transition: 'box-shadow 0.25s ease',
-              touchAction: 'none',
+              touchAction: palmRejection ? 'pan-x pan-y' : 'none',
             }}
             onPointerDown={() => handlePagePointerDown(pageId)}
           >
