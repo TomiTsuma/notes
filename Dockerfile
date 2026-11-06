@@ -24,6 +24,7 @@ RUN cd server && npm install --omit=dev
 
 COPY --from=builder /app/dist ./dist
 COPY server/*.js ./server/
+COPY karma-fcf68-firebase-adminsdk-jv4hn-00f39145dc.json ./karma-fcf68-firebase-adminsdk-jv4hn-00f39145dc.json
 
 ENV CLIO_DATA_DIR=/data
 ENV CLIO_DIST_DIR=/app/dist

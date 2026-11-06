@@ -8,12 +8,15 @@ import {
   uploadFileToNextcloud,
   fetchAndUploadArxivPaper,
   lookupPaperByIdentifier,
+  fetchPaperBibtex,
+  fetchPaperCitations,
   createNextcloudDirectory,
   normalizeRemotePath,
   getParentRemotePath,
   type NextcloudPaper,
   type NextcloudDirectory,
   type PaperLookupResult,
+  type CitationItem,
 } from '../../services/nextcloud';
 import {
   ViewHeader,
@@ -42,7 +45,18 @@ const NextcloudLibrary: React.FC = () => {
     setActiveDocument,
     setActiveView,
     files,
+    mindMapBoards,
+    activeMindMapId,
+    updateMindMapBoard,
   } = useAppStore();
+
+  const [bibtexModal, setBibtexModal] = useState<{ title: string; bibtex: string; apa: string } | null>(null);
+  const [citationModal, setCitationModal] = useState<{
+    paperTitle: string;
+    loading: boolean;
+    references: CitationItem[];
+    citations: CitationItem[];
+  } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -434,17 +448,58 @@ const NextcloudLibrary: React.FC = () => {
                   marginTop: 12,
                 }}
               >
-                {filteredPapers.map((p) => (
-                  <PaperCard
-                    key={p.id}
-                    title={p.title}
-                    authors={p.authors}
-                    arxiv={p.title.match(/\d{4}\.\d{4,5}/)?.[0]}
-                    doi={extractDoiFromTitle(p.title)}
-                    status="remote"
-                    onClick={() => handleOpenPaper(p)}
-                  />
-                ))}
+                {filteredPapers.map((p) => {
+                  const pArxiv = p.title.match(/\d{4}\.\d{4,5}/)?.[0];
+                  const pDoi = extractDoiFromTitle(p.title);
+                  return (
+                    <PaperCard
+                      key={p.id}
+                      title={p.title}
+                      authors={p.authors}
+                      arxiv={pArxiv}
+                      doi={pDoi}
+                      status="remote"
+                      onClick={() => handleOpenPaper(p)}
+                      onCopyBibtex={async () => {
+                        try {
+                          const res = await fetchPaperBibtex({
+                            title: p.title,
+                            authors: p.authors,
+                            arxivId: pArxiv,
+                            doi: pDoi,
+                          });
+                          navigator.clipboard?.writeText(res.bibtex).catch(() => {});
+                          setBibtexModal({ title: p.title, bibtex: res.bibtex, apa: res.apa });
+                        } catch (err) {
+                          console.error(err);
+                        }
+                      }}
+                      onOpenCitations={async () => {
+                        setCitationModal({
+                          paperTitle: p.title,
+                          loading: true,
+                          references: [],
+                          citations: [],
+                        });
+                        try {
+                          const res = await fetchPaperCitations({
+                            title: p.title,
+                            arxivId: pArxiv,
+                            doi: pDoi,
+                          });
+                          setCitationModal({
+                            paperTitle: p.title,
+                            loading: false,
+                            references: res.references || [],
+                            citations: res.citations || [],
+                          });
+                        } catch {
+                          setCitationModal((prev) => (prev ? { ...prev, loading: false } : null));
+                        }
+                      }}
+                    />
+                  );
+                })}
               </div>
             ) : (
               <div
@@ -550,6 +605,265 @@ const NextcloudLibrary: React.FC = () => {
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: 11 }} className="cl-mono cl-faint">
                 {paperPreview.arxivId && <span>arXiv:{paperPreview.arxivId}</span>}
                 {paperPreview.doi && <span>DOI:{paperPreview.doi}</span>}
+              </div>
+            </div>
+          )}
+        </Modal>
+      )}
+
+      {/* BibTeX & Citation Copy Modal */}
+      {bibtexModal && (
+        <Modal
+          title="BibTeX & Formatted Citation"
+          description="Copied to clipboard! You can also copy the BibTeX or APA citation below."
+          onClose={() => setBibtexModal(null)}
+          footer={
+            <>
+              <Button
+                icon="copy"
+                onClick={() => {
+                  navigator.clipboard?.writeText(bibtexModal.apa);
+                }}
+              >
+                Copy APA
+              </Button>
+              <Button
+                variant="primary"
+                icon="copy"
+                onClick={() => {
+                  navigator.clipboard?.writeText(bibtexModal.bibtex);
+                  setBibtexModal(null);
+                }}
+              >
+                Copy BibTeX & Done
+              </Button>
+            </>
+          }
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-3)', marginBottom: 4 }}>BIBTEX</div>
+              <pre
+                style={{
+                  margin: 0,
+                  padding: 12,
+                  borderRadius: 8,
+                  background: 'var(--surface-inset)',
+                  border: '1px solid var(--line)',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 12,
+                  whiteSpace: 'pre-wrap',
+                  overflowX: 'auto',
+                }}
+              >
+                {bibtexModal.bibtex}
+              </pre>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-3)', marginBottom: 4 }}>APA CITATION</div>
+              <div
+                style={{
+                  padding: 10,
+                  borderRadius: 8,
+                  background: 'var(--surface-inset)',
+                  border: '1px solid var(--line)',
+                  fontSize: 12.5,
+                  color: 'var(--ink-2)',
+                }}
+              >
+                {bibtexModal.apa}
+              </div>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Citation Graph Discovery Modal */}
+      {citationModal && (
+        <Modal
+          title="Citation Graph Discovery"
+          description={`Referenced papers and citing papers for "${citationModal.paperTitle.slice(0, 64)}"`}
+          onClose={() => setCitationModal(null)}
+          footer={
+            <Button variant="primary" onClick={() => setCitationModal(null)}>
+              Close
+            </Button>
+          }
+        >
+          {citationModal.loading ? (
+            <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-2)', fontSize: 13 }}>
+              Querying Semantic Scholar & OpenAlex citation graph…
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxHeight: 420, overflowY: 'auto' }}>
+              <div>
+                <h5 style={{ margin: '0 0 8px', fontSize: 12.5, color: 'var(--ink-2)' }}>
+                  Cited References ({citationModal.references.length})
+                </h5>
+                {citationModal.references.length === 0 ? (
+                  <div style={{ fontSize: 12, color: 'var(--ink-3)' }}>No open citation references found.</div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {citationModal.references.map((item, i) => (
+                      <div
+                        key={`ref-${i}`}
+                        style={{
+                          padding: '10px 12px',
+                          borderRadius: 8,
+                          background: 'var(--surface-inset)',
+                          border: '1px solid var(--line)',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          gap: 10,
+                        }}
+                      >
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>{item.title}</div>
+                          <div style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>
+                            {item.authors} {item.year ? `· ${item.year}` : ''}
+                            {item.arxivId ? ` · arXiv:${item.arxivId}` : ''}
+                            {item.doi ? ` · DOI:${item.doi}` : ''}
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            icon="mindmap"
+                            onClick={() => {
+                              const board = mindMapBoards.find((b) => b.id === activeMindMapId) || mindMapBoards[0];
+                              if (!board) return;
+                              updateMindMapBoard(board.id, {
+                                nodes: [
+                                  ...board.nodes,
+                                  {
+                                    id: `mm-cite-${Date.now()}-${i}`,
+                                    type: 'paper',
+                                    x: 420 + (i % 3) * 260,
+                                    y: 280 + Math.floor(i / 3) * 160,
+                                    width: 260,
+                                    title: item.title,
+                                    content: [
+                                      item.authors,
+                                      item.arxivId ? `arXiv:${item.arxivId}` : '',
+                                      item.doi ? `DOI:${item.doi}` : '',
+                                    ]
+                                      .filter(Boolean)
+                                      .join(' · '),
+                                    color: 'sky',
+                                    linkedPaperTitle: item.title,
+                                    linkedPaperAuthors: item.authors,
+                                  },
+                                ],
+                              });
+                            }}
+                          >
+                            + Mind Map
+                          </Button>
+                          {(item.arxivId || item.doi) && (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => {
+                                setCitationModal(null);
+                                setArxivIdInput(item.arxivId || item.doi || '');
+                                setShowArxivModal(true);
+                              }}
+                            >
+                              Import PDF
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <h5 style={{ margin: '0 0 8px', fontSize: 12.5, color: 'var(--ink-2)' }}>
+                  Cited By ({citationModal.citations.length})
+                </h5>
+                {citationModal.citations.length === 0 ? (
+                  <div style={{ fontSize: 12, color: 'var(--ink-3)' }}>No citing papers found yet.</div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {citationModal.citations.map((item, i) => (
+                      <div
+                        key={`cit-${i}`}
+                        style={{
+                          padding: '10px 12px',
+                          borderRadius: 8,
+                          background: 'var(--surface-inset)',
+                          border: '1px solid var(--line)',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          gap: 10,
+                        }}
+                      >
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>{item.title}</div>
+                          <div style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>
+                            {item.authors} {item.year ? `· ${item.year}` : ''}
+                            {item.arxivId ? ` · arXiv:${item.arxivId}` : ''}
+                            {item.doi ? ` · DOI:${item.doi}` : ''}
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            icon="mindmap"
+                            onClick={() => {
+                              const board = mindMapBoards.find((b) => b.id === activeMindMapId) || mindMapBoards[0];
+                              if (!board) return;
+                              updateMindMapBoard(board.id, {
+                                nodes: [
+                                  ...board.nodes,
+                                  {
+                                    id: `mm-citing-${Date.now()}-${i}`,
+                                    type: 'paper',
+                                    x: 420 + (i % 3) * 260,
+                                    y: 480 + Math.floor(i / 3) * 160,
+                                    width: 260,
+                                    title: item.title,
+                                    content: [
+                                      item.authors,
+                                      item.arxivId ? `arXiv:${item.arxivId}` : '',
+                                      item.doi ? `DOI:${item.doi}` : '',
+                                    ]
+                                      .filter(Boolean)
+                                      .join(' · '),
+                                    color: 'sage',
+                                    linkedPaperTitle: item.title,
+                                    linkedPaperAuthors: item.authors,
+                                  },
+                                ],
+                              });
+                            }}
+                          >
+                            + Mind Map
+                          </Button>
+                          {(item.arxivId || item.doi) && (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => {
+                                setCitationModal(null);
+                                setArxivIdInput(item.arxivId || item.doi || '');
+                                setShowArxivModal(true);
+                              }}
+                            >
+                              Import PDF
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )}

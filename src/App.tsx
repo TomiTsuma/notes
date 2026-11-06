@@ -14,8 +14,12 @@ import KanbanBoard from './components/Kanban/KanbanBoard';
 import CalendarView from './components/Calendar/CalendarView';
 import NextcloudLibrary from './components/Nextcloud/NextcloudLibrary';
 import DocumentViewer from './components/Canvas/DocumentViewer';
+import NotebookViewer from './components/Canvas/NotebookViewer';
 import MindMapView from './components/MindMap/MindMapView';
 import ToolPalette from './components/UI/ToolPalette';
+import GoogleAuthModal from './components/Auth/GoogleAuthModal';
+import CommandPalette from './components/Modals/CommandPalette';
+import { fetchCurrentAuthUser } from './services/firebaseAuth';
 
 function App() {
   const {
@@ -30,6 +34,7 @@ function App() {
     folders,
     files,
     activeDocumentId,
+    setActiveDocument,
     projects,
     tags,
     nextcloudConnected,
@@ -38,24 +43,45 @@ function App() {
     addFile,
     nextcloudSyncPath,
     updateFile,
+    splitViewMode,
+    authUser,
+    setAuthUser,
+    requestExportPdf,
   } = useAppStore();
 
   const { loading, error } = useStoreSync();
   const [showSidebar, setShowSidebar] = useState(true);
   const [bgFading, setBgFading] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
 
   const [displayView, setDisplayView] = useState(activeView);
   const [viewPhase, setViewPhase] = useState<'enter' | 'exit' | null>(null);
   const transitionRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pdfInputRef = useRef<HTMLInputElement>(null);
 
-  // Keep sidebar visible by default on launch and handle Google OAuth redirect
+  // Keep sidebar visible by default on launch and handle Google OAuth redirect + Firebase Auth session
   useEffect(() => {
     setShowSidebar(true);
     const params = new URLSearchParams(window.location.search);
     if (params.get('code') || params.get('google_connected')) {
       setActiveView('calendar');
     }
+    fetchCurrentAuthUser().then((u) => {
+      if (u) setAuthUser(u);
+    });
+  }, [setActiveView, setAuthUser]);
+
+  // Global Cmd+K / Ctrl+K shortcut for Command Palette
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setShowCommandPalette((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
   useEffect(() => {
@@ -150,9 +176,35 @@ function App() {
       case 'canvas':
       default:
         return (
-          <div className="canvas-container" style={{ flex: 1, position: 'relative', overflow: 'hidden', height: '100%' }}>
-            <DocumentViewer />
-            <ToolPalette />
+          <div
+            className="canvas-container"
+            style={{
+              flex: 1,
+              position: 'relative',
+              overflow: 'hidden',
+              height: '100%',
+              display: 'flex',
+              flexDirection: 'row',
+            }}
+          >
+            <div style={{ flex: 1, position: 'relative', overflow: 'hidden', height: '100%', minWidth: 0 }}>
+              <DocumentViewer />
+              <ToolPalette />
+            </div>
+            {splitViewMode !== 'none' && (
+              <div
+                style={{
+                  flex: 1,
+                  position: 'relative',
+                  overflow: 'hidden',
+                  height: '100%',
+                  minWidth: 0,
+                  borderLeft: '2px solid var(--line)',
+                }}
+              >
+                {splitViewMode === 'mindmap' ? <MindMapView /> : <NotebookViewer />}
+              </div>
+            )}
           </div>
         );
     }
@@ -252,14 +304,19 @@ function App() {
             tags={tags.map((t) => ({ name: t.name, color: t.color }))}
             activeFileId={activeDocumentId || undefined}
             user={{
-              name: import.meta.env.VITE_USER_NAME || 'User',
-              email: import.meta.env.VITE_USER_EMAIL || 'user@example.com',
+              name: authUser?.name || import.meta.env.VITE_USER_NAME || 'User',
+              email: authUser?.email || import.meta.env.VITE_USER_EMAIL || 'user@example.com',
             }}
             sync={nextcloudConnected ? 'connected' : nextcloudStatus === 'connecting' ? 'connecting' : 'idle'}
             onNavigate={(v) => setActiveView(v as any)}
             onToggleSidebar={() => setShowSidebar(false)}
             onNewFolder={handleNewFolder}
             onUploadFile={handleUploadFile}
+            onSelectFile={(id) => {
+              setActiveDocument(id);
+              setActiveView('canvas');
+            }}
+            onUserClick={() => setShowAuthModal(true)}
           />
         )}
 
@@ -273,6 +330,10 @@ function App() {
             panelOpen={showRightPanel}
             onTogglePanel={toggleRightPanel}
             showDownload={activeView === 'canvas'}
+            onDownload={requestExportPdf}
+            onOpenSearch={() => setShowCommandPalette(true)}
+            onOpenAuth={() => setShowAuthModal(true)}
+            authUser={authUser}
           />
 
           <div className={`view-wrapper${viewPhase ? ` view-${viewPhase}` : ''}`} style={{ flex: 1, overflow: 'auto' }}>
@@ -282,6 +343,9 @@ function App() {
 
         {showRightPanel && <RightPanel />}
       </Window>
+
+      <GoogleAuthModal open={showAuthModal} onClose={() => setShowAuthModal(false)} />
+      <CommandPalette open={showCommandPalette} onClose={() => setShowCommandPalette(false)} />
     </div>
   );
 }

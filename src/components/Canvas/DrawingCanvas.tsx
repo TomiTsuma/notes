@@ -199,6 +199,14 @@ const DrawingCanvas: React.FC<{
   const addTextElement = useAppStore(s => s.addTextElement);
   const setFocusedTextId = useAppStore(s => s.setFocusedTextId);
   const deleteTextElement = useAppStore(s => s.deleteTextElement);
+  const files = useAppStore(s => s.files);
+  const mindMapBoards = useAppStore(s => s.mindMapBoards);
+  const activeMindMapId = useAppStore(s => s.activeMindMapId);
+  const updateMindMapBoard = useAppStore(s => s.updateMindMapBoard);
+  const addChatMessage = useAppStore(s => s.addChatMessage);
+  const showRightPanel = useAppStore(s => s.showRightPanel);
+  const toggleRightPanel = useAppStore(s => s.toggleRightPanel);
+  const [lassoNotice, setLassoNotice] = useState<string | null>(null);
 
   const effectiveDocId = documentId || activeDocumentId;
 
@@ -739,6 +747,155 @@ const DrawingCanvas: React.FC<{
     return { highlighterEls, penEls };
   }, [strokes, selectedIndices, isDraggingLasso, lassoOffset]);
 
+  // Capture visual snippet + text from PDF page inside the current lassoBox
+  const captureLassoExcerpt = useCallback(() => {
+    if (!lassoBox || !containerRef.current) return null;
+    const s = scaleRef.current || 1;
+    const nx = (lassoBox.w < 0 ? lassoBox.x + lassoBox.w : lassoBox.x) * s;
+    const ny = (lassoBox.h < 0 ? lassoBox.y + lassoBox.h : lassoBox.y) * s;
+    const nw = Math.max(40, Math.abs(lassoBox.w) * s);
+    const nh = Math.max(40, Math.abs(lassoBox.h) * s);
+
+    const containerRect = containerRef.current.getBoundingClientRect();
+    const absLeft = containerRect.left + nx;
+    const absTop = containerRect.top + ny;
+    const absCenterY = absTop + nh / 2;
+
+    // Find the PDF page card under the selection
+    const pageCards = Array.from(document.querySelectorAll('.cl-pdf-page-card')) as HTMLElement[];
+    let targetCard: HTMLElement | null = null;
+    let pageNum = 1;
+    for (const card of pageCards) {
+      const r = card.getBoundingClientRect();
+      if (absCenterY >= r.top && absCenterY <= r.bottom) {
+        targetCard = card;
+        pageNum = Number(card.getAttribute('data-page-number')) || 1;
+        break;
+      }
+    }
+
+    let snippetDataUrl = '';
+    let extractedText = '';
+    if (targetCard) {
+      const pdfCanvas = targetCard.querySelector('canvas') as HTMLCanvasElement | null;
+      if (pdfCanvas) {
+        const cRect = pdfCanvas.getBoundingClientRect();
+        const scaleX = pdfCanvas.width / Math.max(1, cRect.width);
+        const scaleY = pdfCanvas.height / Math.max(1, cRect.height);
+        const sx = Math.max(0, (absLeft - cRect.left) * scaleX);
+        const sy = Math.max(0, (absTop - cRect.top) * scaleY);
+        const sw = Math.min(pdfCanvas.width - sx, nw * scaleX);
+        const sh = Math.min(pdfCanvas.height - sy, nh * scaleY);
+        if (sw > 10 && sh > 10) {
+          const outCanvas = document.createElement('canvas');
+          outCanvas.width = Math.min(600, Math.round(sw));
+          outCanvas.height = Math.round(outCanvas.width * (sh / sw));
+          const ctx = outCanvas.getContext('2d');
+          if (ctx) {
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, outCanvas.width, outCanvas.height);
+            ctx.drawImage(pdfCanvas, sx, sy, sw, sh, 0, 0, outCanvas.width, outCanvas.height);
+            snippetDataUrl = outCanvas.toDataURL('image/png');
+          }
+        }
+      }
+
+      // Extract any selectable text spans intersecting the lasso box
+      const spans = Array.from(targetCard.querySelectorAll('.react-pdf__Page__textContent span')) as HTMLElement[];
+      const matchedText: string[] = [];
+      for (const sp of spans) {
+        const sr = sp.getBoundingClientRect();
+        const intersects =
+          sr.right >= absLeft &&
+          sr.left <= absLeft + nw &&
+          sr.bottom >= absTop &&
+          sr.top <= absTop + nh;
+        if (intersects && sp.textContent) {
+          matchedText.push(sp.textContent.trim());
+        }
+      }
+      extractedText = matchedText.filter(Boolean).join(' ');
+    }
+
+    return { pageNum, snippetDataUrl, extractedText };
+  }, [lassoBox]);
+
+  const handleSendLassoToMindMap = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (!effectiveDocId || !lassoBox) return;
+      const excerpt = captureLassoExcerpt();
+      const board = mindMapBoards.find((b) => b.id === activeMindMapId) || mindMapBoards[0];
+      if (!board) return;
+      const docFile = files.find((f) => f.id === effectiveDocId);
+      const pageNum = excerpt?.pageNum || 1;
+      const newNode = {
+        id: `mm-snip-${Date.now()}`,
+        type: 'idea' as const,
+        x: 360 + Math.round((Math.random() - 0.5) * 160),
+        y: 260 + Math.round((Math.random() - 0.5) * 140),
+        width: 280,
+        title: `${docFile ? docFile.name.slice(0, 32) : 'PDF'} · p.${pageNum} Excerpt`,
+        content: excerpt?.extractedText
+          ? excerpt.extractedText.slice(0, 260)
+          : `Visual excerpt captured from page ${pageNum}. Click Open PDF to jump directly to p.${pageNum}.`,
+        color: 'amber',
+        linkedFileId: effectiveDocId,
+        linkedPaperTitle: docFile?.name || 'Document',
+        linkedPage: pageNum,
+        snippetDataUrl: excerpt?.snippetDataUrl || undefined,
+      };
+      updateMindMapBoard(board.id, {
+        nodes: [...board.nodes, newNode],
+      });
+      setLassoNotice(`Added excerpt (p.${pageNum}) to Mind Map "${board.name}"`);
+      setTimeout(() => setLassoNotice(null), 2600);
+      setLassoBox(null);
+      setSelectedIndices([]);
+    },
+    [effectiveDocId, lassoBox, captureLassoExcerpt, mindMapBoards, activeMindMapId, files, updateMindMapBoard]
+  );
+
+  const handleAskAiAboutLasso = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (!effectiveDocId || !lassoBox) return;
+      const excerpt = captureLassoExcerpt();
+      const pageNum = excerpt?.pageNum || 1;
+      const textSnippet = excerpt?.extractedText?.trim();
+      const promptMsg = textSnippet
+        ? `Explain this excerpt from page ${pageNum}:\n\n"${textSnippet.slice(0, 600)}"`
+        : `Summarize and explain the key concepts on page ${pageNum} of this paper.`;
+
+      addChatMessage(effectiveDocId, {
+        id: `msg-${Date.now()}`,
+        role: 'user',
+        content: promptMsg,
+        timestamp: new Date().toISOString(),
+      });
+      if (!showRightPanel) {
+        toggleRightPanel();
+      }
+      setLassoNotice(`Sent p.${pageNum} excerpt to Clio AI`);
+      setTimeout(() => setLassoNotice(null), 2400);
+      setLassoBox(null);
+      setSelectedIndices([]);
+    },
+    [effectiveDocId, lassoBox, captureLassoExcerpt, addChatMessage, showRightPanel, toggleRightPanel]
+  );
+
+  const handleDeleteSelectedStrokes = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (!effectiveDocId || selectedIndices.length === 0) return;
+      const toRemove = new Set(selectedIndices);
+      setStrokes(effectiveDocId, (prev) => prev.filter((_, idx) => !toRemove.has(idx)));
+      setSelectedIndices([]);
+      setLassoBox(null);
+    },
+    [effectiveDocId, selectedIndices, setStrokes]
+  );
+
   return (
     <div 
       ref={containerRef}
@@ -790,6 +947,104 @@ const DrawingCanvas: React.FC<{
           )}
         </g>
       </svg>
+
+      {/* Floating Lasso Action Toolbar (Send to Mind Map / Ask Clio AI / Delete Strokes) */}
+      {activeTool === 'select' &&
+        lassoBox &&
+        Math.abs(lassoBox.w) > 20 &&
+        Math.abs(lassoBox.h) > 20 &&
+        !isDraggingLasso && (
+          <div
+            onPointerDown={(e) => e.stopPropagation()}
+            style={{
+              position: 'absolute',
+              left: Math.max(8, (lassoBox.w < 0 ? lassoBox.x + lassoBox.w : lassoBox.x) * propScale),
+              top: Math.max(8, (lassoBox.h < 0 ? lassoBox.y + lassoBox.h : lassoBox.y) * propScale - 42),
+              zIndex: 40,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '5px 8px',
+              borderRadius: 10,
+              background: 'rgba(28, 28, 30, 0.94)',
+              color: '#fff',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.28)',
+              fontFamily: 'var(--font-sans)',
+              fontSize: 12,
+              pointerEvents: 'auto',
+            }}
+          >
+            <button
+              onClick={handleSendLassoToMindMap}
+              style={{
+                border: 'none',
+                background: '#0a7aff',
+                color: '#fff',
+                padding: '4px 9px',
+                borderRadius: 6,
+                fontSize: 11.5,
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              + Send to Mind Map
+            </button>
+            <button
+              onClick={handleAskAiAboutLasso}
+              style={{
+                border: '1px solid rgba(255,255,255,0.2)',
+                background: 'rgba(255,255,255,0.1)',
+                color: '#fff',
+                padding: '4px 9px',
+                borderRadius: 6,
+                fontSize: 11.5,
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              ✨ Ask Clio AI
+            </button>
+            {selectedIndices.length > 0 && (
+              <button
+                onClick={handleDeleteSelectedStrokes}
+                style={{
+                  border: 'none',
+                  background: '#ef4444',
+                  color: '#fff',
+                  padding: '4px 8px',
+                  borderRadius: 6,
+                  fontSize: 11.5,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Delete ({selectedIndices.length})
+              </button>
+            )}
+          </div>
+        )}
+
+      {lassoNotice && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: 92,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 90,
+            padding: '8px 16px',
+            borderRadius: 99,
+            background: 'rgba(28, 28, 30, 0.92)',
+            color: '#fff',
+            fontSize: 12.5,
+            fontWeight: 600,
+            boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
+            pointerEvents: 'none',
+          }}
+        >
+          {lassoNotice}
+        </div>
+      )}
     </div>
   );
 };

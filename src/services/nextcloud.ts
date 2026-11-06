@@ -369,3 +369,58 @@ export const fetchAndUploadArxivPaper = async (
     dataUrl,
   };
 };
+
+export interface BibtexResult {
+  bibtex: string;
+  apa: string;
+}
+
+export const fetchPaperBibtex = async (params: {
+  title?: string;
+  authors?: string;
+  arxivId?: string;
+  doi?: string;
+  year?: number | string;
+}): Promise<BibtexResult> => {
+  const res = await fetch('/api/arxiv/bibtex', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) {
+    throw new Error('Failed to generate BibTeX');
+  }
+  return await res.json();
+};
+
+export interface CitationItem {
+  title: string;
+  authors: string;
+  year?: number | null;
+  doi?: string;
+  arxivId?: string;
+  pdfUrl?: string;
+  identifier: string;
+}
+
+export interface CitationGraphResult {
+  references: CitationItem[];
+  citations: CitationItem[];
+}
+
+export const fetchPaperCitations = async (params: {
+  title?: string;
+  arxivId?: string;
+  doi?: string;
+}): Promise<CitationGraphResult> => {
+  const res = await fetch('/api/arxiv/citations', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) {
+    throw new Error('Failed to fetch citation graph');
+  }
+  return await res.json();
+};
+

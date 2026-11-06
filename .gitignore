@@ -32,6 +32,7 @@ server/node_modules/
 .env*.local
 .env.*
 !.env.example
+*firebase-adminsdk*.json
 
 # Local Claude settings
 .claude/

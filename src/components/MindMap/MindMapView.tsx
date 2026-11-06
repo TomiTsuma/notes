@@ -1,7 +1,12 @@
 import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { useAppStore } from '../../store/appStore';
 import type { MindMapBoard, MindMapNode, MindMapEdge, MindMapNodeType, Stroke, Point } from '../../store/appStore';
-import { lookupPaperByIdentifier, fetchAndUploadArxivPaper } from '../../services/nextcloud';
+import {
+  lookupPaperByIdentifier,
+  fetchAndUploadArxivPaper,
+  fetchPaperBibtex,
+  fetchPaperCitations,
+} from '../../services/nextcloud';
 import { Button, Icon, IconButton, Modal, TextField, Tag } from '../UI/clio';
 
 type BoardTool = 'select' | 'hand' | 'connect' | 'idea' | 'sticky' | 'point' | 'paper' | 'pen' | 'highlighter' | 'eraser';
@@ -141,6 +146,7 @@ const MindMapView: React.FC = () => {
     addFile,
     setActiveDocument,
     setActiveView,
+    setTargetPdfPage,
     nextcloudSyncPath,
   } = useAppStore();
 
@@ -696,6 +702,9 @@ const MindMapView: React.FC = () => {
       if (found) {
         setActiveDocument(found.id);
         setActiveView('canvas');
+        if (node.linkedPage && node.linkedPage > 0) {
+          setTargetPdfPage({ docId: found.id, page: node.linkedPage });
+        }
         return;
       }
     }
@@ -708,10 +717,207 @@ const MindMapView: React.FC = () => {
       if (byName) {
         setActiveDocument(byName.id);
         setActiveView('canvas');
+        if (node.linkedPage && node.linkedPage > 0) {
+          setTargetPdfPage({ docId: byName.id, page: node.linkedPage });
+        }
         return;
       }
     }
     alert('Paper PDF is not yet downloaded locally. Use "Link Paper" to import it via arXiv ID or DOI.');
+  };
+
+  // Radial / Hierarchical Auto-Layout for the active Mind Map board
+  const handleAutoLayout = () => {
+    if (!activeBoard || activeBoard.nodes.length === 0) return;
+    const nodes = [...activeBoard.nodes];
+    const centerX = 480;
+    const centerY = 320;
+    nodes[0] = { ...nodes[0], x: centerX - 130, y: centerY - 70 };
+    const rest = nodes.slice(1);
+    const ringCapacity = 6;
+    rest.forEach((n, idx) => {
+      const ring = Math.floor(idx / ringCapacity) + 1;
+      const idxInRing = idx % ringCapacity;
+      const totalInRing = Math.min(ringCapacity, rest.length - (ring - 1) * ringCapacity);
+      const angle = (2 * Math.PI * idxInRing) / Math.max(1, totalInRing) - Math.PI / 2;
+      const radiusX = 360 * ring;
+      const radiusY = 250 * ring;
+      nodes[idx + 1] = {
+        ...n,
+        x: Math.round(centerX - 130 + Math.cos(angle) * radiusX),
+        y: Math.round(centerY - 70 + Math.sin(angle) * radiusY),
+      };
+    });
+    updateBoard(() => ({ nodes }));
+  };
+
+  // AI Cluster Generation (sprouts 4 connected synthesis nodes around the selected or root node)
+  const handleAiGenerateCluster = () => {
+    if (!activeBoard) return;
+    const anchor =
+      activeBoard.nodes.find((n) => n.id === selectedNodeId) ||
+      activeBoard.nodes[0];
+    if (!anchor) return;
+
+    const topic = anchor.title || activeBoard.name;
+    const specs: { title: string; content: string; color: string; dx: number; dy: number; edgeLabel: string }[] = [
+      {
+        title: `Problem & Motivation (${topic.slice(0, 22)})`,
+        content: 'Core research bottleneck, assumptions in prior literature, and why existing methods fall short.',
+        color: 'sky',
+        dx: -340,
+        dy: -190,
+        edgeLabel: 'motivates',
+      },
+      {
+        title: `Methodology & Architecture`,
+        content: 'Key mathematical formulation, model pipeline, representation design, and training objective.',
+        color: 'amber',
+        dx: 340,
+        dy: -190,
+        edgeLabel: 'proposes',
+      },
+      {
+        title: `Empirical Findings & Metrics`,
+        content: 'Primary benchmarks, ablation insights, quantitative speed/accuracy gains over baselines.',
+        color: 'sage',
+        dx: -340,
+        dy: 210,
+        edgeLabel: 'evaluates',
+      },
+      {
+        title: `Limitations & Future Directions`,
+        content: 'Failure modes, scaling constraints, and follow-up experiments to explore next.',
+        color: 'lilac',
+        dx: 340,
+        dy: 210,
+        edgeLabel: 'extends to',
+      },
+    ];
+
+    const newNodes: MindMapNode[] = [];
+    const newEdges: MindMapEdge[] = [];
+    specs.forEach((sp, idx) => {
+      const id = `mm-ai-${Date.now()}-${idx}`;
+      newNodes.push({
+        id,
+        type: 'idea',
+        x: Math.round(anchor.x + sp.dx),
+        y: Math.round(anchor.y + sp.dy),
+        width: 260,
+        title: sp.title,
+        content: sp.content,
+        color: sp.color,
+      });
+      newEdges.push({
+        id: `edge-ai-${Date.now()}-${idx}`,
+        fromNodeId: anchor.id,
+        toNodeId: id,
+        label: sp.edgeLabel,
+        color: NODE_TONES[sp.color]?.accent || '#0a7aff',
+        style: 'solid',
+      });
+    });
+
+    updateBoard((b) => ({
+      nodes: [...b.nodes, ...newNodes],
+      edges: [...b.edges, ...newEdges],
+    }));
+  };
+
+  // Export Mind Map board as a structured Markdown literature review (.md)
+  const handleExportMarkdown = () => {
+    if (!activeBoard) return;
+    const lines: string[] = [
+      `# ${activeBoard.name}`,
+      ``,
+      `_Exported from Chlio Mind Map on ${new Date().toLocaleDateString()}_`,
+      ``,
+      `## Nodes (${activeBoard.nodes.length})`,
+      ``,
+    ];
+    for (const n of activeBoard.nodes) {
+      lines.push(`### ${n.title || 'Untitled'} (${n.type.toUpperCase()})`);
+      if (n.linkedPaperTitle) {
+        lines.push(`- **Linked Paper**: ${n.linkedPaperTitle}${n.linkedPage ? ` (Page ${n.linkedPage})` : ''}`);
+      }
+      if (n.content) {
+        lines.push(`${n.content}`);
+      }
+      lines.push(``);
+    }
+    if (activeBoard.edges.length > 0) {
+      lines.push(`## Connections (${activeBoard.edges.length})`, ``);
+      for (const e of activeBoard.edges) {
+        const from = activeBoard.nodes.find((n) => n.id === e.fromNodeId)?.title || e.fromNodeId;
+        const to = activeBoard.nodes.find((n) => n.id === e.toNodeId)?.title || e.toNodeId;
+        lines.push(`- **${from}** --(${e.label || 'connects to'})--> **${to}**`);
+      }
+    }
+    const blob = new Blob([lines.join('\n')], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${activeBoard.name.replace(/[^a-zA-Z0-9_-]+/g, '_')}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Export Mind Map board as standalone SVG diagram (.svg)
+  const handleExportSvg = () => {
+    if (!activeBoard) return;
+    const xs = activeBoard.nodes.map((n) => n.x);
+    const ys = activeBoard.nodes.map((n) => n.y);
+    const minX = Math.min(0, ...xs) - 80;
+    const minY = Math.min(0, ...ys) - 80;
+    const maxX = Math.max(1200, ...xs.map((x) => x + 320)) + 80;
+    const maxY = Math.max(800, ...ys.map((y) => y + 220)) + 80;
+    const width = maxX - minX;
+    const height = maxY - minY;
+
+    const escapeXml = (s: string) =>
+      String(s || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+
+    const edgeEls = activeBoard.edges
+      .map((e) => {
+        const fn = activeBoard.nodes.find((n) => n.id === e.fromNodeId);
+        const tn = activeBoard.nodes.find((n) => n.id === e.toNodeId);
+        if (!fn || !tn) return '';
+        const g = computeEdgeGeometry(fn, tn);
+        return `<path d="${g.path}" fill="none" stroke="${e.color || '#64748b'}" stroke-width="2.5" />`;
+      })
+      .join('\n');
+
+    const nodeEls = activeBoard.nodes
+      .map((n) => {
+        const tone = NODE_TONES[n.color] || NODE_TONES.sky;
+        const w = n.width || 260;
+        const h = 140;
+        return `<g transform="translate(${n.x}, ${n.y})">
+          <rect width="${w}" height="${h}" rx="12" fill="${tone.bg}" stroke="${tone.border}" stroke-width="2" />
+          <text x="14" y="28" font-family="sans-serif" font-size="14" font-weight="bold" fill="#0f172a">${escapeXml(n.title.slice(0, 36))}</text>
+          <text x="14" y="54" font-family="sans-serif" font-size="12" fill="#334155">${escapeXml(n.content.slice(0, 50))}</text>
+        </g>`;
+      })
+      .join('\n');
+
+    const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${minX} ${minY} ${width} ${height}" width="${width}" height="${height}">
+      <rect x="${minX}" y="${minY}" width="${width}" height="${height}" fill="#f8fafc" />
+      ${edgeEls}
+      ${nodeEls}
+    </svg>`;
+
+    const blob = new Blob([svgContent], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${activeBoard.name.replace(/[^a-zA-Z0-9_-]+/g, '_')}.svg`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const handleAttachPaperToBoard = (paperItem: { fileId?: string; title: string; authors: string }) => {
@@ -1006,6 +1212,31 @@ const MindMapView: React.FC = () => {
             }}
           >
             Link Paper
+          </Button>
+          <Button
+            variant="ai"
+            icon="spark"
+            onClick={handleAiGenerateCluster}
+          >
+            AI Expand
+          </Button>
+          <Button
+            icon="grid"
+            onClick={handleAutoLayout}
+          >
+            Auto-Layout
+          </Button>
+          <Button
+            icon="download"
+            onClick={handleExportMarkdown}
+          >
+            .MD
+          </Button>
+          <Button
+            icon="download"
+            onClick={handleExportSvg}
+          >
+            .SVG
           </Button>
         </div>
       </div>
@@ -1369,6 +1600,34 @@ const MindMapView: React.FC = () => {
                     }}
                   />
 
+                  {/* Visual PDF Excerpt / Snippet Image (from Lasso-to-Mind-Map) */}
+                  {node.snippetDataUrl && (
+                    <div
+                      onClick={(ev) => {
+                        ev.stopPropagation();
+                        handleOpenLinkedPaper(node);
+                      }}
+                      title="Click to jump to this excerpt page in the PDF"
+                      style={{
+                        borderRadius: 8,
+                        overflow: 'hidden',
+                        border: `1px solid ${tone.border}`,
+                        background: '#ffffff',
+                        cursor: 'pointer',
+                        maxHeight: 150,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <img
+                        src={node.snippetDataUrl}
+                        alt={node.title}
+                        style={{ width: '100%', height: 'auto', display: 'block', objectFit: 'contain' }}
+                      />
+                    </div>
+                  )}
+
                   {/* Linked Paper Chip */}
                   {(node.linkedPaperTitle || node.type === 'paper') && (
                     <div
@@ -1379,58 +1638,208 @@ const MindMapView: React.FC = () => {
                         backgroundColor: 'rgba(255,255,255,0.78)',
                         border: `1px solid ${tone.border}`,
                         display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
+                        flexDirection: 'column',
                         gap: 6,
                       }}
                     >
-                      <div style={{ minWidth: 0, flex: 1 }}>
-                        <div
-                          style={{
-                            fontSize: 11,
-                            fontWeight: 700,
-                            color: '#0f172a',
-                            whiteSpace: 'nowrap',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                          }}
-                          title={node.linkedPaperTitle || node.title}
-                        >
-                          📄 {node.linkedPaperTitle || node.title}
-                        </div>
-                        {node.linkedPaperAuthors && (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                        <div style={{ minWidth: 0, flex: 1 }}>
                           <div
                             style={{
-                              fontSize: 10,
-                              color: '#64748b',
+                              fontSize: 11,
+                              fontWeight: 700,
+                              color: '#0f172a',
                               whiteSpace: 'nowrap',
                               overflow: 'hidden',
                               textOverflow: 'ellipsis',
                             }}
+                            title={node.linkedPaperTitle || node.title}
                           >
-                            {node.linkedPaperAuthors}
+                            📄 {node.linkedPaperTitle || node.title}
                           </div>
-                        )}
+                          {node.linkedPaperAuthors && (
+                            <div
+                              style={{
+                                fontSize: 10,
+                                color: '#64748b',
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                              }}
+                            >
+                              {node.linkedPaperAuthors}
+                            </div>
+                          )}
+                        </div>
+                        <button
+                          onClick={(ev) => {
+                            ev.stopPropagation();
+                            handleOpenLinkedPaper(node);
+                          }}
+                          style={{
+                            border: 'none',
+                            background: tone.accent,
+                            color: '#ffffff',
+                            fontSize: 10.5,
+                            fontWeight: 700,
+                            padding: '4px 8px',
+                            borderRadius: 6,
+                            cursor: 'pointer',
+                            flexShrink: 0,
+                          }}
+                        >
+                          Open PDF{node.linkedPage ? ` (p.${node.linkedPage})` : ''}
+                        </button>
                       </div>
-                      <button
-                        onClick={(ev) => {
-                          ev.stopPropagation();
-                          handleOpenLinkedPaper(node);
-                        }}
+
+                      {/* Deep-Link Page Number + BibTeX & Citation Graph actions */}
+                      <div
                         style={{
-                          border: 'none',
-                          background: tone.accent,
-                          color: '#ffffff',
-                          fontSize: 10.5,
-                          fontWeight: 700,
-                          padding: '4px 8px',
-                          borderRadius: 6,
-                          cursor: 'pointer',
-                          flexShrink: 0,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: 4,
+                          borderTop: '1px dashed rgba(0,0,0,0.08)',
+                          paddingTop: 5,
                         }}
                       >
-                        Open PDF
-                      </button>
+                        <label
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 4,
+                            fontSize: 10,
+                            fontWeight: 600,
+                            color: '#475569',
+                          }}
+                        >
+                          <span>Page:</span>
+                          <input
+                            type="number"
+                            min={1}
+                            placeholder="1"
+                            value={node.linkedPage || ''}
+                            onChange={(ev) => {
+                              const val = parseInt(ev.target.value, 10);
+                              handleUpdateNode(node.id, { linkedPage: isNaN(val) ? undefined : val });
+                            }}
+                            style={{
+                              width: 38,
+                              padding: '1px 4px',
+                              fontSize: 10,
+                              borderRadius: 4,
+                              border: '1px solid #cbd5e1',
+                              background: '#fff',
+                              color: '#0f172a',
+                            }}
+                          />
+                        </label>
+
+                        <div style={{ display: 'inline-flex', gap: 4 }}>
+                          <button
+                            onClick={async (ev) => {
+                              ev.stopPropagation();
+                              try {
+                                const pTitle = node.linkedPaperTitle || node.title;
+                                const pArxiv = (pTitle + ' ' + node.content).match(/\d{4}\.\d{4,5}/)?.[0];
+                                const pDoi = (pTitle + ' ' + node.content).match(/10\.\d{4,9}\/[-._;()/:A-Z0-9]+/i)?.[0];
+                                const res = await fetchPaperBibtex({
+                                  title: pTitle,
+                                  authors: node.linkedPaperAuthors || 'Unknown',
+                                  arxivId: pArxiv,
+                                  doi: pDoi,
+                                });
+                                await navigator.clipboard?.writeText(res.bibtex);
+                                alert(`Copied BibTeX to clipboard:\n\n${res.bibtex}`);
+                              } catch (err) {
+                                console.error(err);
+                              }
+                            }}
+                            style={{
+                              border: '1px solid #cbd5e1',
+                              background: '#fff',
+                              color: '#334155',
+                              fontSize: 10,
+                              fontWeight: 600,
+                              padding: '2px 6px',
+                              borderRadius: 4,
+                              cursor: 'pointer',
+                            }}
+                            title="Copy BibTeX citation"
+                          >
+                            BibTeX
+                          </button>
+
+                          <button
+                            onClick={async (ev) => {
+                              ev.stopPropagation();
+                              try {
+                                const pTitle = node.linkedPaperTitle || node.title;
+                                const pArxiv = (pTitle + ' ' + node.content).match(/\d{4}\.\d{4,5}/)?.[0];
+                                const pDoi = (pTitle + ' ' + node.content).match(/10\.\d{4,9}\/[-._;()/:A-Z0-9]+/i)?.[0];
+                                const res = await fetchPaperCitations({
+                                  title: pTitle,
+                                  arxivId: pArxiv,
+                                  doi: pDoi,
+                                });
+                                const items = [
+                                  ...(res.references || []).slice(0, 3).map((r) => ({ ...r, rel: 'cites' })),
+                                  ...(res.citations || []).slice(0, 2).map((c) => ({ ...c, rel: 'cited by' })),
+                                ];
+                                if (items.length === 0) {
+                                  alert('No open citation graph connections found for this paper.');
+                                  return;
+                                }
+                                const spawnedNodes: MindMapNode[] = [];
+                                const spawnedEdges: MindMapEdge[] = [];
+                                items.forEach((it, idx) => {
+                                  const angle = (2 * Math.PI * idx) / items.length;
+                                  const nid = `mm-cit-${Date.now()}-${idx}`;
+                                  spawnedNodes.push({
+                                    id: nid,
+                                    type: 'paper',
+                                    x: Math.round(node.x + Math.cos(angle) * 340),
+                                    y: Math.round(node.y + Math.sin(angle) * 230),
+                                    width: 250,
+                                    title: it.title,
+                                    content: `${it.authors}${it.year ? ` (${it.year})` : ''}${it.arxivId ? ` · arXiv:${it.arxivId}` : ''}`,
+                                    color: it.rel === 'cites' ? 'sky' : 'sage',
+                                    linkedPaperTitle: it.title,
+                                    linkedPaperAuthors: it.authors,
+                                  });
+                                  spawnedEdges.push({
+                                    id: `edge-cit-${Date.now()}-${idx}`,
+                                    fromNodeId: it.rel === 'cites' ? node.id : nid,
+                                    toNodeId: it.rel === 'cites' ? nid : node.id,
+                                    label: it.rel,
+                                    color: it.rel === 'cites' ? '#0a7aff' : '#059669',
+                                    style: 'dashed',
+                                  });
+                                });
+                                updateBoard((b) => ({
+                                  nodes: [...b.nodes, ...spawnedNodes],
+                                  edges: [...b.edges, ...spawnedEdges],
+                                }));
+                              } catch (err) {
+                                console.error(err);
+                              }
+                            }}
+                            style={{
+                              border: '1px solid #cbd5e1',
+                              background: '#fff',
+                              color: '#0a7aff',
+                              fontSize: 10,
+                              fontWeight: 700,
+                              padding: '2px 6px',
+                              borderRadius: 4,
+                              cursor: 'pointer',
+                            }}
+                            title="Fetch Cited & Citing papers and add them as connected nodes"
+                          >
+                            + Citations
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>

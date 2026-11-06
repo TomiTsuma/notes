@@ -36,6 +36,14 @@ import {
   deleteGoogleCalendarEvent,
 } from './googleCalendar.js';
 import { generateIcsFeed, parseIcsContent } from './icsService.js';
+import {
+  getFirebaseWebConfig,
+  verifyFirebaseIdToken,
+  createFirebaseCustomToken,
+  getSavedAuthSession,
+  saveAuthSession,
+  clearAuthSession,
+} from './firebaseAuth.js';
 
 const PORT = parseInt(process.env.PORT || '4191', 10);
 const DIST_DIR = process.env.CLIO_DIST_DIR || path.join(__dirname, '..', 'dist');
@@ -728,7 +736,18 @@ app.get('/api/auth/google/callback', async (req, res) => {
     if (!code) {
       return res.status(400).send('Missing authorization code');
     }
-    const { returnOrigin } = await handleGoogleCallback(code, state);
+    const { returnOrigin, email } = await handleGoogleCallback(code, state);
+    if (email) {
+      saveAuthSession({
+        uid: `google:${email.toLowerCase()}`,
+        email,
+        name: email.split('@')[0],
+        photoURL: '',
+        emailVerified: true,
+        provider: 'google.com',
+        lastLoginAt: new Date().toISOString(),
+      });
+    }
     res.redirect(`${returnOrigin || defaultUri}?google_connected=true`);
   } catch (err) {
     console.error('Google callback error:', err);
@@ -845,6 +864,317 @@ app.post('/api/calendar/import-ics', async (req, res) => {
     res.json({ ok: true, events: parsedEvents, count: parsedEvents.length });
   } catch (err) {
     console.error('import-ics error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==========================================
+// Firebase Google Authentication Endpoints
+// ==========================================
+app.get('/api/auth/firebase-config', async (req, res) => {
+  try {
+    const config = await getFirebaseWebConfig(req.hostname);
+    res.json({ ok: true, config });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/auth/me', (_req, res) => {
+  try {
+    const user = getSavedAuthSession();
+    res.json({ ok: true, authenticated: !!user, user });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/auth/verify', async (req, res) => {
+  try {
+    const { idToken } = req.body || {};
+    const user = await verifyFirebaseIdToken(idToken);
+    res.json({ ok: true, user });
+  } catch (err) {
+    console.error('Firebase token verification error:', err.message);
+    res.status(401).json({ error: err.message });
+  }
+});
+
+app.post('/api/auth/custom-token', async (req, res) => {
+  try {
+    const googleStatus = getGoogleStatus();
+    const email = req.body?.email || (googleStatus.connected ? googleStatus.email : '');
+    const name = req.body?.name || (email ? email.split('@')[0] : 'Google User');
+    const photoURL = req.body?.photoURL || '';
+    if (!email) {
+      return res.status(400).json({ error: 'No Google account email available for custom token' });
+    }
+    const uid = `google:${email.toLowerCase()}`;
+    const customToken = createFirebaseCustomToken(uid, { email, name });
+    const webConfig = await getFirebaseWebConfig(req.hostname);
+
+    // Exchange custom token for a real Firebase ID token via Identity Toolkit
+    const exchangeRes = await fetch(
+      `https://identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key=${encodeURIComponent(webConfig.apiKey)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: customToken, returnSecureToken: true }),
+      }
+    );
+
+    let idToken = '';
+    if (exchangeRes.ok) {
+      const exData = await exchangeRes.json();
+      idToken = exData.idToken || '';
+    }
+
+    const user = {
+      uid,
+      email,
+      name,
+      photoURL,
+      emailVerified: true,
+      provider: 'google.com',
+      lastLoginAt: new Date().toISOString(),
+    };
+    saveAuthSession(user);
+    res.json({ ok: true, customToken, idToken, user });
+  } catch (err) {
+    console.error('Custom token error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/auth/logout', (_req, res) => {
+  try {
+    clearAuthSession();
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==========================================
+// BibTeX & Citation Graph Discovery Endpoints
+// ==========================================
+app.post('/api/arxiv/bibtex', async (req, res) => {
+  try {
+    const { doi, arxivId, title = 'Untitled Paper', authors = 'Unknown Author', year } = req.body || {};
+    const pubYear = year || (arxivId && /^\d{4}/.test(arxivId) ? `20${arxivId.slice(0, 2)}` : new Date().getFullYear());
+
+    // 1. If DOI is available, try content-negotiation for official BibTeX
+    if (doi) {
+      try {
+        const cleanDoi = String(doi).replace(/^https?:\/\/(dx\.)?doi\.org\//i, '').replace(/^doi:\s*/i, '').trim();
+        const doiRes = await fetch(`https://doi.org/${encodeURI(cleanDoi)}`, {
+          headers: { Accept: 'application/x-bibtex; charset=utf-8' },
+          redirect: 'follow',
+        });
+        if (doiRes.ok) {
+          const bibText = (await doiRes.text()).trim();
+          if (bibText.startsWith('@')) {
+            const apa = `${authors} (${pubYear}). ${title}. https://doi.org/${cleanDoi}`;
+            return res.json({ ok: true, bibtex: bibText, apa });
+          }
+        }
+      } catch {
+        // fall through to synthesized BibTeX
+      }
+    }
+
+    // 2. Synthesize clean BibTeX entry
+    const firstAuthorLast = String(authors)
+      .split(',')[0]
+      .trim()
+      .split(/\s+/)
+      .pop()
+      ?.replace(/[^a-zA-Z0-9]/g, '')
+      .toLowerCase() || 'paper';
+    const firstWord = String(title)
+      .split(/\s+/)[0]
+      ?.replace(/[^a-zA-Z0-9]/g, '')
+      .toLowerCase() || 'work';
+    const citeKey = `${firstAuthorLast}${pubYear}${firstWord}`;
+    const formattedAuthors = String(authors)
+      .split(',')
+      .map((a) => a.trim())
+      .filter(Boolean)
+      .join(' and ');
+
+    const lines = [
+      `@article{${citeKey},`,
+      `  title = {${title}},`,
+      `  author = {${formattedAuthors || 'Unknown'}},`,
+      `  year = {${pubYear}},`,
+    ];
+    if (arxivId) {
+      lines.push(`  eprint = {${arxivId}},`);
+      lines.push(`  archivePrefix = {arXiv},`);
+      lines.push(`  url = {https://arxiv.org/abs/${arxivId}},`);
+    }
+    if (doi) {
+      lines.push(`  doi = {${doi}},`);
+    }
+    lines.push(`}`);
+
+    const bibtex = lines.join('\n');
+    const apa = `${authors} (${pubYear}). ${title}.${doi ? ` https://doi.org/${doi}` : arxivId ? ` arXiv:${arxivId}` : ''}`;
+    res.json({ ok: true, bibtex, apa });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/arxiv/citations', async (req, res) => {
+  try {
+    const { doi, arxivId, title } = req.body || {};
+    let s2PaperId = '';
+    if (doi) {
+      const cleanDoi = String(doi).replace(/^https?:\/\/(dx\.)?doi\.org\//i, '').replace(/^doi:\s*/i, '').trim();
+      s2PaperId = `DOI:${cleanDoi}`;
+    } else if (arxivId) {
+      const cleanArxiv = String(arxivId).replace(/v\d+$/i, '').trim();
+      s2PaperId = `ARXIV:${cleanArxiv}`;
+    }
+
+    const formatS2Item = (item) => {
+      if (!item || !item.title) return null;
+      const ext = item.externalIds || {};
+      const itemAuthors = Array.isArray(item.authors)
+        ? item.authors.map((a) => a.name).filter(Boolean).slice(0, 5).join(', ')
+        : 'Unknown Authors';
+      return {
+        title: item.title,
+        authors: itemAuthors || 'Unknown Authors',
+        year: item.year || null,
+        doi: ext.DOI || undefined,
+        arxivId: ext.ArXiv || undefined,
+        pdfUrl: item.openAccessPdf?.url || (ext.ArXiv ? `https://arxiv.org/pdf/${ext.ArXiv}.pdf` : undefined),
+        identifier: ext.ArXiv || ext.DOI || item.title,
+      };
+    };
+
+    if (s2PaperId) {
+      try {
+        const fields = [
+          'title',
+          'year',
+          'authors',
+          'externalIds',
+          'References.title',
+          'References.year',
+          'References.authors',
+          'References.externalIds',
+          'References.openAccessPdf',
+          'citations.title',
+          'citations.year',
+          'citations.authors',
+          'citations.externalIds',
+          'citations.openAccessPdf',
+        ].join(',').replace(/References/g, 'references');
+
+        const s2Res = await fetch(
+          `https://api.semanticscholar.org/graph/v1/paper/${encodeURIComponent(s2PaperId)}?fields=${fields}`,
+          { headers: { 'User-Agent': 'ChlioResearchApp/1.0' } }
+        );
+        if (s2Res.ok) {
+          const s2Data = await s2Res.json();
+          const references = (s2Data.references || []).map(formatS2Item).filter(Boolean).slice(0, 15);
+          const citations = (s2Data.citations || []).map(formatS2Item).filter(Boolean).slice(0, 15);
+          if (references.length > 0 || citations.length > 0) {
+            return res.json({ ok: true, references, citations });
+          }
+        }
+      } catch (err) {
+        console.warn('Semantic Scholar citation graph lookup failed:', err.message);
+      }
+    }
+
+    // Fallback: OpenAlex search by DOI or title
+    try {
+      let oaWork = null;
+      if (doi) {
+        const cleanDoi = String(doi).replace(/^https?:\/\/(dx\.)?doi\.org\//i, '').replace(/^doi:\s*/i, '').trim();
+        const oaRes = await fetch(`https://api.openalex.org/works/https://doi.org/${encodeURI(cleanDoi)}`);
+        if (oaRes.ok) oaWork = await oaRes.json();
+      } else if (title) {
+        const oaSearch = await fetch(
+          `https://api.openalex.org/works?search=${encodeURIComponent(title)}&per-page=1`
+        );
+        if (oaSearch.ok) {
+          const oaList = await oaSearch.json();
+          oaWork = oaList.results?.[0] || null;
+        }
+      }
+
+      if (oaWork) {
+        const refIds = (oaWork.referenced_works || [])
+          .slice(0, 10)
+          .map((u) => u.split('/').pop())
+          .filter(Boolean);
+        let references = [];
+        if (refIds.length > 0) {
+          const refRes = await fetch(
+            `https://api.openalex.org/works?filter=openalex_id:${refIds.join('|')}&per-page=10`
+          );
+          if (refRes.ok) {
+            const refData = await refRes.json();
+            references = (refData.results || []).map((w) => {
+              const wDoi = w.doi ? String(w.doi).replace(/^https?:\/\/(dx\.)?doi\.org\//i, '') : undefined;
+              const wAuthors = (w.authorships || [])
+                .map((a) => a.author?.display_name)
+                .filter(Boolean)
+                .slice(0, 5)
+                .join(', ');
+              return {
+                title: w.title || w.display_name || 'Untitled',
+                authors: wAuthors || 'Unknown Authors',
+                year: w.publication_year || null,
+                doi: wDoi,
+                pdfUrl: w.open_access?.oa_url || w.best_oa_location?.pdf_url || undefined,
+                identifier: wDoi || w.title,
+              };
+            });
+          }
+        }
+
+        // Fetch citing works from OpenAlex
+        let citations = [];
+        const oaId = oaWork.id?.split('/').pop();
+        if (oaId) {
+          const citeRes = await fetch(
+            `https://api.openalex.org/works?filter=cites:${oaId}&per-page=10`
+          );
+          if (citeRes.ok) {
+            const citeData = await citeRes.json();
+            citations = (citeData.results || []).map((w) => {
+              const wDoi = w.doi ? String(w.doi).replace(/^https?:\/\/(dx\.)?doi\.org\//i, '') : undefined;
+              const wAuthors = (w.authorships || [])
+                .map((a) => a.author?.display_name)
+                .filter(Boolean)
+                .slice(0, 5)
+                .join(', ');
+              return {
+                title: w.title || w.display_name || 'Untitled',
+                authors: wAuthors || 'Unknown Authors',
+                year: w.publication_year || null,
+                doi: wDoi,
+                pdfUrl: w.open_access?.oa_url || w.best_oa_location?.pdf_url || undefined,
+                identifier: wDoi || w.title,
+              };
+            });
+          }
+        }
+
+        return res.json({ ok: true, references, citations });
+      }
+    } catch (err) {
+      console.warn('OpenAlex citation lookup failed:', err.message);
+    }
+
+    res.json({ ok: true, references: [], citations: [] });
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });

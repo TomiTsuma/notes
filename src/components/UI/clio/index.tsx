@@ -384,7 +384,17 @@ export interface TreeNode {
   children?: TreeNode[];
 }
 
-export function TreeItem({ item, activeId, depth = 0 }: { item: TreeNode; activeId?: string; depth?: number }) {
+export function TreeItem({
+  item,
+  activeId,
+  depth = 0,
+  onSelectFile,
+}: {
+  item: TreeNode;
+  activeId?: string;
+  depth?: number;
+  onSelectFile?: (id: string) => void;
+}) {
   const [open, setOpen] = useState(item.open ?? true);
   const isFolder = item.type === 'folder';
   const icon = isFolder ? 'folder' : item.type === 'pdf' ? 'pdf' : item.type === 'notebook' ? 'notebook' : item.type === 'sticky' ? 'sticky' : 'file';
@@ -394,10 +404,18 @@ export function TreeItem({ item, activeId, depth = 0 }: { item: TreeNode; active
         icon={icon}
         label={item.name}
         active={activeId === item.id}
-        onClick={() => isFolder && setOpen(!open)}
+        onClick={() => {
+          if (isFolder) setOpen(!open);
+          else if (onSelectFile) onSelectFile(item.id);
+        }}
         count={isFolder && item.children ? item.children.length : undefined}
       />
-      {isFolder && open && item.children && item.children.map((c) => <TreeItem key={c.id} item={c} activeId={activeId} depth={depth + 1} />)}
+      {isFolder &&
+        open &&
+        item.children &&
+        item.children.map((c) => (
+          <TreeItem key={c.id} item={c} activeId={activeId} depth={depth + 1} onSelectFile={onSelectFile} />
+        ))}
     </div>
   );
 }
@@ -427,6 +445,8 @@ export interface SidebarProps {
   onToggleSidebar?: () => void;
   onNewFolder?: () => void;
   onUploadFile?: () => void;
+  onSelectFile?: (id: string) => void;
+  onUserClick?: () => void;
 }
 
 export function Sidebar({
@@ -444,6 +464,8 @@ export function Sidebar({
   onToggleSidebar,
   onNewFolder,
   onUploadFile,
+  onSelectFile,
+  onUserClick,
 }: SidebarProps) {
   const syncLabel = {
     connected: 'Nextcloud synced',
@@ -505,7 +527,7 @@ export function Sidebar({
             ]}
           >
             {tree.map((t) => (
-              <TreeItem key={t.id} item={t} activeId={activeFileId} />
+              <TreeItem key={t.id} item={t} activeId={activeFileId} onSelectFile={onSelectFile} />
             ))}
           </NavSection>
         )}
@@ -528,7 +550,12 @@ export function Sidebar({
           <span style={{ flex: 1 }} />
           <IconButton icon="settings" label="Settings & connections" iconSize={15} style={{ width: 24, height: 24 }} />
         </div>
-        <div className="cl-user">
+        <div
+          className="cl-user"
+          onClick={onUserClick}
+          style={{ cursor: onUserClick ? 'pointer' : undefined }}
+          title="Click to manage Google Authentication (Firebase)"
+        >
           <Avatar name={user.name} size={32} />
           <div style={{ minWidth: 0, flex: 1 }}>
             <b>{user.name}</b>
@@ -551,6 +578,10 @@ export interface TopBarProps {
   onTogglePanel?: () => void;
   onToggleSidebar?: () => void;
   showDownload?: boolean;
+  onDownload?: () => void;
+  onOpenSearch?: () => void;
+  onOpenAuth?: () => void;
+  authUser?: { name: string; email: string; photoURL?: string } | null;
   children?: ReactNode;
 }
 
@@ -564,6 +595,10 @@ export function TopBar({
   onTogglePanel,
   onToggleSidebar,
   showDownload,
+  onDownload,
+  onOpenSearch,
+  onOpenAuth,
+  authUser,
   children,
 }: TopBarProps) {
   return (
@@ -583,6 +618,11 @@ export function TopBar({
       </nav>
       {children}
       <div className="cl-topbar-actions">
+        {onOpenSearch && (
+          <Button variant="ghost" size="sm" icon="search" onClick={onOpenSearch}>
+            Search ⌘K
+          </Button>
+        )}
         {recording ? (
           <span className="cl-rec">
             <i />Recording 04:12
@@ -590,12 +630,17 @@ export function TopBar({
         ) : (
           <IconButton icon="mic" label="Start recording" />
         )}
-        {showDownload && <IconButton icon="download" label="Download file" />}
+        {showDownload && <IconButton icon="download" label="Export Annotated PDF" onClick={onDownload} />}
         <IconButton
           icon={theme === 'dark' ? 'sun' : 'moon'}
           label={theme === 'dark' ? 'Light mode' : 'Dark mode'}
           onClick={onToggleTheme}
         />
+        {onOpenAuth && (
+          <Button variant="secondary" size="sm" onClick={onOpenAuth}>
+            {authUser ? `✓ ${authUser.name}` : 'Google Sign In'}
+          </Button>
+        )}
         <span className="cl-topbar-sep" />
         <Button variant={panelOpen ? 'ai' : 'ghost'} size="sm" icon="spark" onClick={onTogglePanel} aria-pressed={!!panelOpen}>
           Ask Clio
@@ -863,7 +908,31 @@ export function FolderCard({ name, count, tone = 'sky', peek = 3, onClick }: { n
   );
 }
 
-export function PaperCard({ title, authors, arxiv, doi, pages, tags = [], annotated, status, onClick }: { title: string; authors?: string; arxiv?: string; doi?: string; pages?: number; tags?: { name: string; color?: string }[]; annotated?: number; status?: string; onClick?: () => void }) {
+export function PaperCard({
+  title,
+  authors,
+  arxiv,
+  doi,
+  pages,
+  tags = [],
+  annotated,
+  status,
+  onClick,
+  onCopyBibtex,
+  onOpenCitations,
+}: {
+  title: string;
+  authors?: string;
+  arxiv?: string;
+  doi?: string;
+  pages?: number;
+  tags?: { name: string; color?: string }[];
+  annotated?: number;
+  status?: string;
+  onClick?: () => void;
+  onCopyBibtex?: () => void;
+  onOpenCitations?: () => void;
+}) {
   return (
     <Card hover className="cl-paper" onClick={onClick}>
       <div className="thumb">
@@ -893,7 +962,18 @@ export function PaperCard({ title, authors, arxiv, doi, pages, tags = [], annota
           ))}
         </div>
       </div>
-      <IconButton icon="more" label="Paper options" />
+      <div className="cl-row" style={{ gap: 4 }} onClick={(e) => e.stopPropagation()}>
+        {onCopyBibtex && (
+          <Button size="sm" variant="ghost" icon="copy" onClick={onCopyBibtex}>
+            BibTeX
+          </Button>
+        )}
+        {onOpenCitations && (
+          <Button size="sm" variant="ghost" icon="mindmap" onClick={onOpenCitations}>
+            Citations
+          </Button>
+        )}
+      </div>
     </Card>
   );
 }

@@ -43,6 +43,8 @@ export interface Paper {
   id: string;
   title: string;
   authors: string;
+  arxivId?: string;
+  doi?: string;
 }
 
 export interface Folder {
@@ -183,6 +185,8 @@ export interface MindMapNode {
   linkedFileId?: string;
   linkedPaperTitle?: string;
   linkedPaperAuthors?: string;
+  linkedPage?: number;
+  snippetDataUrl?: string;
 }
 
 export interface MindMapEdge {
@@ -246,6 +250,11 @@ export interface AppState {
   palmRejection: boolean;
   markerStraightMode: boolean;
   dailyTodos: DailyTodo[];
+  redoStrokes: Record<string, Stroke[]>;
+  splitViewMode: 'none' | 'mindmap' | 'notebook';
+  targetPdfPage: { docId: string; page: number; ts: number } | null;
+  authUser: { uid: string; email: string; name: string; photoURL?: string; provider?: string } | null;
+  triggerExportPdf: number;
 
   setActiveTool: (tool: ToolType) => void;
   setBrushColor: (color: string) => void;
@@ -253,6 +262,10 @@ export interface AppState {
   togglePalmRejection: () => void;
   setMarkerStraightMode: (enabled: boolean) => void;
   toggleMarkerStraightMode: () => void;
+  setSplitViewMode: (mode: 'none' | 'mindmap' | 'notebook') => void;
+  setTargetPdfPage: (target: { docId: string; page: number } | null) => void;
+  setAuthUser: (user: { uid: string; email: string; name: string; photoURL?: string; provider?: string } | null) => void;
+  requestExportPdf: () => void;
   addDailyTodo: (todo: DailyTodo) => void;
   toggleDailyTodo: (id: string) => void;
   deleteDailyTodo: (id: string) => void;
@@ -280,6 +293,7 @@ export interface AppState {
   toggleRecording: () => void;
   toggleRightPanel: () => void;
   undo: () => void;
+  redo: () => void;
   translateStrokes: (docId: string, strokeIndices: number[], dx: number, dy: number) => void;
 
   setStrokes: (docId: string, strokesFn: (prev: Stroke[]) => Stroke[]) => void;
@@ -373,6 +387,11 @@ export const useAppStore = create<AppState>()((set) => ({
       palmRejection: true,
       markerStraightMode: false,
       dailyTodos: [],
+      redoStrokes: {},
+      splitViewMode: 'none',
+      targetPdfPage: null,
+      authUser: null,
+      triggerExportPdf: 0,
       focusedTextId: null,
       
       folders: [],
@@ -510,6 +529,10 @@ export const useAppStore = create<AppState>()((set) => ({
       togglePalmRejection: () => set(state => ({ palmRejection: !state.palmRejection })),
       setMarkerStraightMode: (enabled) => set({ markerStraightMode: enabled }),
       toggleMarkerStraightMode: () => set(state => ({ markerStraightMode: !state.markerStraightMode })),
+      setSplitViewMode: (mode) => set({ splitViewMode: mode }),
+      setTargetPdfPage: (target) => set({ targetPdfPage: target ? { ...target, ts: Date.now() } : null }),
+      setAuthUser: (user) => set({ authUser: user }),
+      requestExportPdf: () => set(state => ({ triggerExportPdf: state.triggerExportPdf + 1 })),
       addDailyTodo: (todo) => set(state => ({ dailyTodos: [...state.dailyTodos, todo] })),
       toggleDailyTodo: (id) => set(state => ({
         dailyTodos: state.dailyTodos.map(t => t.id === id ? { ...t, completed: !t.completed } : t)
@@ -563,12 +586,38 @@ export const useAppStore = create<AppState>()((set) => ({
       toggleRightPanel: () => set(state => ({ showRightPanel: !state.showRightPanel })),
       undo: () => set(state => {
         if (!state.activeDocumentId) return state;
-        const docAnn = state.annotations[state.activeDocumentId];
+        const docId = state.activeDocumentId;
+        const docAnn = state.annotations[docId];
         if (!docAnn || docAnn.strokes.length === 0) return state;
+        const popped = docAnn.strokes[docAnn.strokes.length - 1];
+        const prevRedo = state.redoStrokes[docId] || [];
         return {
           annotations: {
             ...state.annotations,
-            [state.activeDocumentId]: { ...docAnn, strokes: docAnn.strokes.slice(0, -1) }
+            [docId]: { ...docAnn, strokes: docAnn.strokes.slice(0, -1) }
+          },
+          redoStrokes: {
+            ...state.redoStrokes,
+            [docId]: [...prevRedo, popped]
+          }
+        };
+      }),
+
+      redo: () => set(state => {
+        if (!state.activeDocumentId) return state;
+        const docId = state.activeDocumentId;
+        const redoStack = state.redoStrokes[docId] || [];
+        if (redoStack.length === 0) return state;
+        const restored = redoStack[redoStack.length - 1];
+        const docAnn = state.annotations[docId] || { strokes: [], textElements: [] };
+        return {
+          annotations: {
+            ...state.annotations,
+            [docId]: { ...docAnn, strokes: [...docAnn.strokes, restored] }
+          },
+          redoStrokes: {
+            ...state.redoStrokes,
+            [docId]: redoStack.slice(0, -1)
           }
         };
       }),
@@ -603,6 +652,10 @@ export const useAppStore = create<AppState>()((set) => ({
           annotations: {
             ...state.annotations,
             [docId]: { ...docAnn, strokes: nextStrokes }
+          },
+          redoStrokes: {
+            ...state.redoStrokes,
+            [docId]: []
           }
         };
       }),

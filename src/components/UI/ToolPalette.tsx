@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../../store/appStore';
 import { ToolDock, ToolPopover, PEN_COLORS } from './clio';
 
@@ -18,6 +18,7 @@ const ToolPalette: React.FC = () => {
     brushSize,
     setBrushSize,
     undo,
+    redo,
     clearAnnotations,
     activeDocumentId,
     activeView,
@@ -31,6 +32,27 @@ const ToolPalette: React.FC = () => {
 
   const [showPopover, setShowPopover] = useState(false);
   const swatchToken = PEN_COLORS.find((t) => resolvePenToken(t) === brushColor) ?? brushColor;
+
+  useEffect(() => {
+    if (activeView !== 'canvas') return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          redo();
+        } else {
+          undo();
+        }
+      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [activeView, undo, redo]);
 
   if (activeView !== 'canvas') return null;
 
@@ -127,6 +149,7 @@ const ToolPalette: React.FC = () => {
           onTogglePalmRejection={togglePalmRejection}
           onSelect={handleSelectTool}
           onUndo={undo}
+          onRedo={redo}
           onClear={handleClear}
           onAddPage={handleAddPage}
         />

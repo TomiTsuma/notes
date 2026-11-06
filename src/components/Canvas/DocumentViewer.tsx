@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
+import { get as idbGet, set as idbSet } from 'idb-keyval';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 import { useAppStore } from '../../store/appStore';
@@ -28,10 +29,27 @@ type SpreadMode = 'fit-width' | 'fit-page' | 'two-page' | 'custom';
 const ZOOM_PRESETS = [50, 75, 90, 100, 110, 125, 140, 160, 180, 200, 250, 300];
 
 const DocumentViewer: React.FC = () => {
-  const { activeDocumentId, files, updateFile, tags, addTag, setFileTags, palmRejection, togglePalmRejection } = useAppStore();
+  const {
+    activeDocumentId,
+    files,
+    updateFile,
+    tags,
+    addTag,
+    setFileTags,
+    palmRejection,
+    togglePalmRejection,
+    splitViewMode,
+    setSplitViewMode,
+    targetPdfPage,
+    setTargetPdfPage,
+    triggerExportPdf,
+    annotations,
+  } = useAppStore();
   const [numPages, setNumPages] = useState<number | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [overlayHeight, setOverlayHeight] = useState(0);
+  const [cachedPdfUrl, setCachedPdfUrl] = useState<string | null>(null);
+  const [exportingPdf, setExportingPdf] = useState(false);
 
   // Spread & Zoom states
   const [spreadMode, setSpreadMode] = useState<SpreadMode>('fit-width');
@@ -48,24 +66,48 @@ const DocumentViewer: React.FC = () => {
 
   const file = files.find((f) => f.id === activeDocumentId);
 
-  // Convert blob/relative to base64 if needed
+  // Convert blob/relative to base64 if needed + Offline IndexedDB cache
   useEffect(() => {
-    if (!file?.dataUrl) return;
-    if (file.dataUrl.startsWith('/api/files/')) return;
-    if (file.dataUrl.startsWith('data:application/pdf;base64,')) return;
+    setCachedPdfUrl(null);
+    if (!file?.id) return;
+    const cacheKey = `clio-pdf-cache:${file.id}`;
+
+    if (file.dataUrl?.startsWith('data:application/pdf;base64,')) {
+      idbSet(cacheKey, file.dataUrl).catch(() => {});
+      return;
+    }
+
     if (!file.type?.includes('pdf')) return;
 
-    const convert = async () => {
+    const loadOrCache = async () => {
       try {
-        const res = await fetch(file.dataUrl!);
-        const buf = await res.arrayBuffer();
-        const base64 = arrayBufferToBase64(buf);
-        updateFile(file.id, { dataUrl: `data:application/pdf;base64,${base64}` });
+        if (file.dataUrl) {
+          const res = await fetch(file.dataUrl);
+          if (res.ok) {
+            const buf = await res.arrayBuffer();
+            const base64 = `data:application/pdf;base64,${arrayBufferToBase64(buf)}`;
+            idbSet(cacheKey, base64).catch(() => {});
+            if (!file.dataUrl.startsWith('/api/files/')) {
+              updateFile(file.id, { dataUrl: base64 });
+            } else {
+              setCachedPdfUrl(base64);
+            }
+            return;
+          }
+        }
+      } catch {
+        // Offline fallback: read from IndexedDB cache
+      }
+      try {
+        const cached = await idbGet<string>(cacheKey);
+        if (cached) {
+          setCachedPdfUrl(cached);
+        }
       } catch (e) {
-        console.error('PDF base64 conversion failed:', e);
+        console.error('Offline PDF cache lookup failed:', e);
       }
     };
-    convert();
+    loadOrCache();
   }, [file?.id, file?.dataUrl, file?.type, updateFile]);
 
   // Observe scroll container dimensions to support responsive "Fit Width" spreading
@@ -186,24 +228,25 @@ const DocumentViewer: React.FC = () => {
   }, [file?.id, file?.type, file?.dataUrl]);
 
   const pdfData = useMemo(() => {
-    if (!file?.dataUrl) return null;
+    const activeDataUrl = cachedPdfUrl || file?.dataUrl;
+    if (!activeDataUrl) return null;
     setLoadError(null);
     try {
-      if (file.dataUrl.startsWith('data:application/pdf;base64,')) {
-        const base64 = file.dataUrl.split('base64,')[1];
+      if (activeDataUrl.startsWith('data:application/pdf;base64,')) {
+        const base64 = activeDataUrl.split('base64,')[1];
         if (!base64) return null;
         const raw = window.atob(base64);
         const uint8Array = new Uint8Array(raw.length);
         for (let i = 0; i < raw.length; i++) uint8Array[i] = raw.charCodeAt(i);
         return { data: uint8Array };
       }
-      return file.dataUrl;
+      return activeDataUrl;
     } catch (e) {
       console.error('Error decoding PDF:', e);
       setLoadError('Failed to decode PDF data');
       return null;
     }
-  }, [file?.dataUrl]);
+  }, [cachedPdfUrl, file?.dataUrl]);
 
   const onDocumentLoadSuccess = useCallback(({ numPages: n }: { numPages: number }) => {
     setNumPages(n);
@@ -231,6 +274,194 @@ const DocumentViewer: React.FC = () => {
       setJumpPageInput(String(clamped));
     }
   }, [numPages]);
+
+  // Deep-link page jump when navigating from Mind Map or Command Palette
+  useEffect(() => {
+    if (!targetPdfPage || !file || targetPdfPage.docId !== file.id || !numPages) return;
+    const timer = setTimeout(() => {
+      scrollToPage(targetPdfPage.page);
+      setTargetPdfPage(null);
+    }, 180);
+    return () => clearTimeout(timer);
+  }, [targetPdfPage, file, numPages, scrollToPage, setTargetPdfPage]);
+
+  // Two-finger pinch-to-zoom on the PDF scroll container
+  const pinchStartDistRef = useRef<number | null>(null);
+  const pinchStartZoomRef = useRef<number>(100);
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+
+    const getTouchDist = (t1: Touch, t2: Touch) =>
+      Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        pinchStartDistRef.current = getTouchDist(e.touches[0], e.touches[1]);
+        pinchStartZoomRef.current = Math.round(effectiveScale * 100);
+      }
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 2 && pinchStartDistRef.current) {
+        if (e.cancelable) e.preventDefault();
+        const dist = getTouchDist(e.touches[0], e.touches[1]);
+        const ratio = dist / pinchStartDistRef.current;
+        const nextZoom = Math.max(40, Math.min(400, Math.round(pinchStartZoomRef.current * ratio)));
+        setSpreadMode('custom');
+        setCustomZoom(nextZoom);
+      }
+    };
+
+    const onTouchEnd = () => {
+      pinchStartDistRef.current = null;
+    };
+
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    el.addEventListener('touchend', onTouchEnd, { passive: true });
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
+      el.removeEventListener('touchend', onTouchEnd);
+    };
+  }, [effectiveScale]);
+
+  // Export Annotated PDF (composites PDF page canvases + vector strokes + text annotations)
+  const handleExportAnnotatedPdf = useCallback(async () => {
+    if (!file || exportingPdf) return;
+    setExportingPdf(true);
+    try {
+      const pageCards = Array.from(document.querySelectorAll('.cl-pdf-page-card')) as HTMLElement[];
+      if (pageCards.length === 0) return;
+
+      const docAnn = annotations[file.id] || { strokes: [], textElements: [] };
+      const wrapperRect = pdfWrapperRef.current?.getBoundingClientRect();
+      const s = effectiveScale || 1;
+      const pageDataUrls: { pageNum: number; dataUrl: string; width: number; height: number }[] = [];
+
+      for (const card of pageCards) {
+        const pageNum = Number(card.getAttribute('data-page-number')) || 1;
+        const pdfCanvas = card.querySelector('canvas') as HTMLCanvasElement | null;
+        if (!pdfCanvas) continue;
+
+        const out = document.createElement('canvas');
+        out.width = pdfCanvas.width;
+        out.height = pdfCanvas.height;
+        const ctx = out.getContext('2d');
+        if (!ctx) continue;
+
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, out.width, out.height);
+        ctx.drawImage(pdfCanvas, 0, 0);
+
+        const cardRect = card.getBoundingClientRect();
+        const pageOffsetTopUnscaled = wrapperRect ? (cardRect.top - wrapperRect.top) / s : 0;
+        const pageOffsetLeftUnscaled = wrapperRect ? (cardRect.left - wrapperRect.left) / s : 0;
+        const canvasScale = out.width / Math.max(1, cardRect.width / s);
+
+        // Render vector strokes belonging to this page
+        for (const stroke of docAnn.strokes || []) {
+          if (!stroke.points || stroke.points.length === 0) continue;
+          ctx.save();
+          ctx.globalAlpha = stroke.tool === 'highlighter' ? 0.35 : 1;
+          ctx.strokeStyle = stroke.color;
+          ctx.fillStyle = stroke.color;
+          ctx.lineWidth = stroke.size * canvasScale;
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+
+          if (stroke.points.length === 1) {
+            const [px, py] = stroke.points[0];
+            ctx.beginPath();
+            ctx.arc(
+              (px - pageOffsetLeftUnscaled) * canvasScale,
+              (py - pageOffsetTopUnscaled) * canvasScale,
+              Math.max((stroke.size * canvasScale) / 2, 2),
+              0,
+              Math.PI * 2
+            );
+            ctx.fill();
+          } else {
+            ctx.beginPath();
+            stroke.points.forEach(([px, py], idx) => {
+              const cx = (px - pageOffsetLeftUnscaled) * canvasScale;
+              const cy = (py - pageOffsetTopUnscaled) * canvasScale;
+              if (idx === 0) ctx.moveTo(cx, cy);
+              else ctx.lineTo(cx, cy);
+            });
+            ctx.stroke();
+          }
+          ctx.restore();
+        }
+
+        // Render text & sticky notes belonging to this page
+        for (const te of docAnn.textElements || []) {
+          if (!te.text) continue;
+          const localX = (te.x - pageOffsetLeftUnscaled) * canvasScale;
+          const localY = (te.y - pageOffsetTopUnscaled) * canvasScale;
+          if (localY < -50 || localY > out.height + 50) continue;
+          ctx.save();
+          if (te.type === 'sticky') {
+            ctx.fillStyle = '#fff8b5';
+            ctx.fillRect(localX, localY, 200 * canvasScale, 90 * canvasScale);
+          }
+          ctx.fillStyle = '#1c1c1e';
+          ctx.font = `${Math.round(13 * canvasScale)}px sans-serif`;
+          ctx.fillText(te.text.slice(0, 120), localX + 8 * canvasScale, localY + 24 * canvasScale);
+          ctx.restore();
+        }
+
+        pageDataUrls.push({
+          pageNum,
+          dataUrl: out.toDataURL('image/png'),
+          width: out.width,
+          height: out.height,
+        });
+      }
+
+      const printWin = window.open('', '_blank');
+      if (printWin) {
+        const cleanTitle = file.name.replace(/\.pdf$/i, '') + ' (Annotated)';
+        printWin.document.write(`<!DOCTYPE html>
+<html>
+<head>
+  <title>${cleanTitle}</title>
+  <style>
+    @page { margin: 0; }
+    body { margin: 0; background: #1e1e1e; display: flex; flex-direction: column; align-items: center; font-family: system-ui, sans-serif; }
+    .toolbar { position: sticky; top: 0; width: 100%; background: #111; color: #fff; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; box-sizing: border-box; z-index: 10; }
+    .toolbar button { background: #0a7aff; color: #fff; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; }
+    .page-img { max-width: 100%; height: auto; display: block; margin: 12px auto; box-shadow: 0 4px 20px rgba(0,0,0,0.4); background: #fff; page-break-after: always; }
+    @media print {
+      body { background: #fff; }
+      .toolbar { display: none; }
+      .page-img { margin: 0; box-shadow: none; width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <span><b>${cleanTitle}</b> · ${pageDataUrls.length} annotated page(s)</span>
+    <button onclick="window.print()">Save as PDF / Print</button>
+  </div>
+  ${pageDataUrls.map((p) => `<img class="page-img" src="${p.dataUrl}" alt="Page ${p.pageNum}" />`).join('\n')}
+</body>
+</html>`);
+        printWin.document.close();
+      }
+    } finally {
+      setExportingPdf(false);
+    }
+  }, [file, exportingPdf, annotations, effectiveScale]);
+
+  const lastExportTriggerRef = useRef(triggerExportPdf);
+  useEffect(() => {
+    if (triggerExportPdf !== lastExportTriggerRef.current) {
+      lastExportTriggerRef.current = triggerExportPdf;
+      handleExportAnnotatedPdf();
+    }
+  }, [triggerExportPdf, handleExportAnnotatedPdf]);
 
   const handleZoomIn = useCallback(() => {
     setSpreadMode('custom');
@@ -484,6 +715,81 @@ const DocumentViewer: React.FC = () => {
               <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15" />
             </svg>
             <span>Touch Scroll: {palmRejection ? 'ON' : 'OFF'}</span>
+          </button>
+
+          {/* Split-Screen Mode Selector (PDF + Mind Map / Notebook) */}
+          <div
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              background: 'var(--bg-inset, rgba(0,0,0,0.05))',
+              padding: '2px',
+              borderRadius: '6px',
+              gap: 2,
+            }}
+          >
+            <button
+              onClick={() => setSplitViewMode(splitViewMode === 'mindmap' ? 'none' : 'mindmap')}
+              title="Toggle Split Screen: PDF + Mind Map"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                padding: '4px 8px',
+                borderRadius: '4px',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: 11.5,
+                fontWeight: 600,
+                background: splitViewMode === 'mindmap' ? 'var(--bg-surface-solid, #ffffff)' : 'transparent',
+                color: splitViewMode === 'mindmap' ? 'var(--accent-color, #007aff)' : 'var(--text-secondary, #86868b)',
+                boxShadow: splitViewMode === 'mindmap' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+              }}
+            >
+              <span>Split: Mind Map</span>
+            </button>
+            <button
+              onClick={() => setSplitViewMode(splitViewMode === 'notebook' ? 'none' : 'notebook')}
+              title="Toggle Split Screen: PDF + Notebook"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                padding: '4px 8px',
+                borderRadius: '4px',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: 11.5,
+                fontWeight: 600,
+                background: splitViewMode === 'notebook' ? 'var(--bg-surface-solid, #ffffff)' : 'transparent',
+                color: splitViewMode === 'notebook' ? 'var(--accent-color, #007aff)' : 'var(--text-secondary, #86868b)',
+                boxShadow: splitViewMode === 'notebook' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+              }}
+            >
+              <span>Split: Notebook</span>
+            </button>
+          </div>
+
+          {/* Export Annotated PDF Button */}
+          <button
+            onClick={handleExportAnnotatedPdf}
+            disabled={exportingPdf}
+            title="Export PDF with flattened highlights, pen strokes, and sticky notes"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 5,
+              padding: '4px 9px',
+              borderRadius: '6px',
+              border: '1px solid var(--line)',
+              cursor: exportingPdf ? 'wait' : 'pointer',
+              fontSize: 11.5,
+              fontWeight: 600,
+              background: 'var(--bg-inset, rgba(0,0,0,0.05))',
+              color: 'var(--text-primary)',
+            }}
+          >
+            <span>{exportingPdf ? 'Exporting…' : 'Export Annotated'}</span>
           </button>
 
           {/* Mode Switchers */}
