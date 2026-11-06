@@ -55,12 +55,12 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, ollamaUrl: process.env.OLLAMA_URL || 'http://100.101.189.31:11434' });
+  res.json({ ok: true, ollamaUrl: process.env.OLLAMA_URL || 'http://192.168.100.17:11434' });
 });
 
-// Ollama AI Proxy (supports streaming /api/generate + automatic port & model discovery on 100.101.189.31)
+// Ollama AI Proxy (supports streaming /api/generate + automatic port & model discovery on 192.168.100.17)
 function getOllamaCandidateBaseUrls() {
-  const raw = (process.env.OLLAMA_URL || 'http://100.101.189.31:11434').trim().replace(/\/+$/, '');
+  const raw = (process.env.OLLAMA_URL || 'http://192.168.100.17:11434').trim().replace(/\/+$/, '');
   const withProtocol = /^https?:\/\//i.test(raw) ? raw : `http://${raw}`;
   const candidates = [withProtocol];
   try {
