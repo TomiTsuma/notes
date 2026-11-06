@@ -127,80 +127,416 @@ app.put('/api/bootstrap', (req, res) => {
   }
 });
 
-// ArXiv Paper Downloader Proxy
-app.post('/api/arxiv/download', async (req, res) => {
-  const { arxivId } = req.body || {};
-  if (!arxivId || typeof arxivId !== 'string') {
-    return res.status(400).json({ error: 'arXiv ID or URL is required' });
+// Helper: parse user input into arXiv ID or DOI
+function parsePaperIdentifier(rawInput) {
+  let input = String(rawInput || '').trim();
+  try {
+    input = decodeURIComponent(input);
+  } catch {
+    // keep raw if not valid URI encoding
   }
 
-  let cleanId = arxivId.trim();
-  cleanId = cleanId.replace(/^https?:\/\/(export\.)?arxiv\.org\/(abs|pdf)\//i, '');
-  cleanId = cleanId.replace(/^arxiv:/i, '');
-  cleanId = cleanId.replace(/\.pdf$/i, '');
-  cleanId = cleanId.trim();
+  // 1. Check for official arXiv DOI: 10.48550/arXiv.<id>
+  const arxivDoiMatch = input.match(/10\.48550\/arXiv\.([0-9]{4}\.[0-9]{4,5}(?:v\d+)?|[a-z-]+\/\d{7}(?:v\d+)?)/i);
+  if (arxivDoiMatch) {
+    return {
+      type: 'arxiv',
+      arxivId: arxivDoiMatch[1],
+      doi: `10.48550/arXiv.${arxivDoiMatch[1]}`,
+    };
+  }
 
-  if (!cleanId) {
-    return res.status(400).json({ error: 'Invalid arXiv ID or URL' });
+  // 2. Check for general DOI (10.xxxx/...) or doi.org URL or doi: prefix
+  const doiCleaned = input
+    .replace(/^https?:\/\/(dx\.)?doi\.org\//i, '')
+    .replace(/^doi:\s*/i, '')
+    .trim();
+  const doiMatch = doiCleaned.match(/(10\.\d{4,9}\/[-._;()/:A-Za-z0-9]+)/);
+  if (doiMatch) {
+    const doi = doiMatch[1].replace(/[.,;]+$/, '').replace(/\.pdf$/i, '');
+    return {
+      type: 'doi',
+      doi,
+      arxivId: null,
+    };
+  }
+
+  // 3. Otherwise treat as arXiv ID or URL
+  let cleanArxiv = input
+    .replace(/^https?:\/\/(export\.)?arxiv\.org\/(abs|pdf)\//i, '')
+    .replace(/^arxiv:\s*/i, '')
+    .replace(/\.pdf$/i, '')
+    .trim();
+
+  return {
+    type: 'arxiv',
+    arxivId: cleanArxiv || null,
+    doi: null,
+  };
+}
+
+function formatAuthorsList(names) {
+  const clean = (names || []).map(n => String(n || '').trim()).filter(Boolean);
+  if (clean.length === 0) return '';
+  if (clean.length <= 3) return clean.join(', ');
+  return `${clean.slice(0, 3).join(', ')} et al.`;
+}
+
+function normalizeTitleForComparison(title) {
+  return String(title || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+async function fetchArxivMetadataByQuery(queryParam) {
+  const metaRes = await fetch(`https://export.arxiv.org/api/query?${queryParam}`);
+  if (!metaRes.ok) return [];
+  const xml = await metaRes.text();
+  const entries = [...xml.matchAll(/<entry>([\s\S]*?)<\/entry>/gi)];
+  return entries.map(match => {
+    const entryXml = match[1];
+    const idMatch = entryXml.match(/<id>([\s\S]*?)<\/id>/i);
+    let entryArxivId = null;
+    if (idMatch && idMatch[1]) {
+      entryArxivId = idMatch[1].trim().replace(/^https?:\/\/(export\.)?arxiv\.org\/abs\//i, '').trim();
+    }
+    const titleMatch = entryXml.match(/<title>([\s\S]*?)<\/title>/i);
+    const entryTitle = titleMatch ? titleMatch[1].replace(/\s+/g, ' ').trim() : '';
+    const authorMatches = [...entryXml.matchAll(/<author>[\s\S]*?<name>([\s\S]*?)<\/name>[\s\S]*?<\/author>/gi)];
+    const entryAuthors = formatAuthorsList(authorMatches.map(m => m[1]));
+    const doiMatch = entryXml.match(/<arxiv:doi[^>]*>([\s\S]*?)<\/arxiv:doi>/i);
+    const entryDoi = doiMatch ? doiMatch[1].trim() : null;
+    return {
+      arxivId: entryArxivId,
+      title: entryTitle,
+      authors: entryAuthors,
+      doi: entryDoi,
+    };
+  });
+}
+
+async function resolvePaperMetadataAndCandidates(rawInput) {
+  const parsed = parsePaperIdentifier(rawInput);
+  if (!parsed.arxivId && !parsed.doi) {
+    throw new Error('Invalid arXiv ID or DOI');
+  }
+
+  let title = '';
+  let authors = '';
+  let arxivId = parsed.arxivId;
+  let doi = parsed.doi;
+  const candidatePdfUrls = [];
+  const addCandidateUrl = (url) => {
+    if (url && typeof url === 'string' && /^https?:\/\//i.test(url) && !candidatePdfUrls.includes(url)) {
+      candidatePdfUrls.push(url);
+    }
+  };
+
+  if (parsed.type === 'arxiv' && arxivId) {
+    try {
+      const entries = await fetchArxivMetadataByQuery(`id_list=${encodeURIComponent(arxivId)}`);
+      if (entries.length > 0 && entries[0].title) {
+        title = entries[0].title;
+        authors = entries[0].authors || 'arXiv';
+        if (entries[0].doi && !doi) doi = entries[0].doi;
+      }
+    } catch (err) {
+      console.warn('Failed to fetch arXiv metadata:', err.message);
+    }
+    addCandidateUrl(`https://export.arxiv.org/pdf/${arxivId}.pdf`);
+    addCandidateUrl(`https://arxiv.org/pdf/${arxivId}.pdf`);
+    return {
+      type: 'arxiv',
+      arxivId,
+      doi,
+      title: title || arxivId,
+      authors: authors || 'arXiv',
+      candidatePdfUrls,
+    };
+  }
+
+  // DOI resolution across Crossref, OpenAlex, Semantic Scholar, EuropePMC, and arXiv
+  const [crSettled, oaSettled, s2Settled, epmcSettled, arxivDoiSettled] = await Promise.allSettled([
+    fetch(`https://api.crossref.org/works/${encodeURIComponent(doi)}`, {
+      headers: { 'User-Agent': 'ClioNotes/1.0 (mailto:support@ereuna.org)' },
+    }).then(r => (r.ok ? r.json() : null)),
+    fetch(`https://api.openalex.org/works/https://doi.org/${encodeURIComponent(doi)}`, {
+      headers: { 'User-Agent': 'ClioNotes/1.0 (mailto:support@ereuna.org)' },
+    }).then(r => (r.ok ? r.json() : null)),
+    fetch(`https://api.semanticscholar.org/graph/v1/paper/DOI:${encodeURIComponent(doi)}?fields=title,authors,externalIds,openAccessPdf`, {
+      headers: { 'User-Agent': 'ClioNotes/1.0' },
+    }).then(r => (r.ok ? r.json() : null)),
+    fetch(`https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=DOI:${encodeURIComponent(doi)}&format=json&resultType=core`).then(r => (r.ok ? r.json() : null)),
+    fetchArxivMetadataByQuery(`search_query=doi:${encodeURIComponent(doi)}&max_results=2`),
+  ]);
+
+  const cr = crSettled.status === 'fulfilled' ? crSettled.value?.message : null;
+  const oa = oaSettled.status === 'fulfilled' ? oaSettled.value : null;
+  const s2 = s2Settled.status === 'fulfilled' ? s2Settled.value : null;
+  const epmc = epmcSettled.status === 'fulfilled' ? epmcSettled.value?.resultList?.result?.[0] : null;
+  const arxivByDoi = arxivDoiSettled.status === 'fulfilled' ? arxivDoiSettled.value : [];
+
+  // 1. Check arXiv match by DOI
+  if (arxivByDoi && arxivByDoi.length > 0 && arxivByDoi[0].arxivId) {
+    arxivId = arxivByDoi[0].arxivId;
+    if (!title && arxivByDoi[0].title) title = arxivByDoi[0].title;
+    if (!authors && arxivByDoi[0].authors) authors = arxivByDoi[0].authors;
+  }
+
+  // 2. Semantic Scholar metadata & externalIds
+  if (s2) {
+    if (!title && s2.title) title = s2.title;
+    if (!authors && Array.isArray(s2.authors) && s2.authors.length > 0) {
+      authors = formatAuthorsList(s2.authors.map(a => a.name));
+    }
+    if (!arxivId && s2.externalIds?.ArXiv) {
+      arxivId = s2.externalIds.ArXiv;
+    }
+  }
+
+  // 3. OpenAlex metadata & OA locations
+  if (oa) {
+    if (!title && (oa.title || oa.display_name)) title = oa.title || oa.display_name;
+    if (!authors && Array.isArray(oa.authorships) && oa.authorships.length > 0) {
+      authors = formatAuthorsList(oa.authorships.map(a => a.author?.display_name));
+    }
+    const allLocs = [
+      oa.best_oa_location,
+      oa.primary_location,
+      ...(Array.isArray(oa.locations) ? oa.locations : []),
+    ].filter(Boolean);
+    for (const loc of allLocs) {
+      const checkUrl = loc.pdf_url || loc.landing_page_url || '';
+      const axMatch = checkUrl.match(/arxiv\.org\/(?:abs|pdf)\/([0-9]{4}\.[0-9]{4,5}(?:v\d+)?|[a-z-]+\/\d{7}(?:v\d+)?)/i);
+      if (axMatch && !arxivId) {
+        arxivId = axMatch[1];
+      }
+    }
+  }
+
+  // 4. Crossref metadata & relations
+  if (cr) {
+    if (!title && Array.isArray(cr.title) && cr.title[0]) {
+      title = String(cr.title[0]).replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+    }
+    if (!authors && Array.isArray(cr.author) && cr.author.length > 0) {
+      authors = formatAuthorsList(
+        cr.author.map(a => [a.given, a.family].filter(Boolean).join(' ') || a.name)
+      );
+    }
+    if (!arxivId && cr.relation) {
+      const relStr = JSON.stringify(cr.relation);
+      const axRel = relStr.match(/10\.48550\/arXiv\.([0-9]{4}\.[0-9]{4,5}(?:v\d+)?)/i) ||
+                    relStr.match(/arxiv\.org\/(?:abs|pdf)\/([0-9]{4}\.[0-9]{4,5}(?:v\d+)?)/i);
+      if (axRel) arxivId = axRel[1];
+    }
+  }
+
+  // 5. EuropePMC metadata
+  if (epmc) {
+    if (!title && epmc.title) title = String(epmc.title).replace(/\.$/, '').trim();
+    if (!authors && epmc.authorString) authors = epmc.authorString;
+  }
+
+  // 6. If still no arxivId but we have a title, check if an exact title match exists on arXiv
+  if (!arxivId && title && title.length > 12) {
+    try {
+      const cleanQueryTitle = title.replace(/["\\():?]/g, ' ').replace(/\s+/g, ' ').trim();
+      const titleEntries = await fetchArxivMetadataByQuery(`search_query=ti:%22${encodeURIComponent(cleanQueryTitle)}%22&max_results=5`);
+      const normTarget = normalizeTitleForComparison(title);
+      const matched = titleEntries.find(e => normalizeTitleForComparison(e.title) === normTarget);
+      if (matched && matched.arxivId) {
+        arxivId = matched.arxivId;
+      }
+    } catch {
+      // ignore fallback search errors
+    }
+  }
+
+  // Assemble candidate PDF URLs in priority order
+  if (arxivId) {
+    addCandidateUrl(`https://export.arxiv.org/pdf/${arxivId}.pdf`);
+    addCandidateUrl(`https://arxiv.org/pdf/${arxivId}.pdf`);
+  }
+  if (oa) {
+    addCandidateUrl(oa.best_oa_location?.pdf_url);
+    addCandidateUrl(oa.primary_location?.pdf_url);
+    if (Array.isArray(oa.locations)) {
+      for (const loc of oa.locations) {
+        addCandidateUrl(loc?.pdf_url);
+      }
+    }
+    addCandidateUrl(oa.open_access?.oa_url);
+  }
+  if (s2?.openAccessPdf?.url) {
+    addCandidateUrl(s2.openAccessPdf.url);
+  }
+  if (epmc) {
+    const ftList = epmc.fullTextUrlList?.fullTextUrl;
+    if (Array.isArray(ftList)) {
+      for (const item of ftList) {
+        if (item.documentStyle === 'pdf' || item.availabilityCode === 'OA') {
+          addCandidateUrl(item.url);
+        }
+      }
+    }
+    if (epmc.pmcid) {
+      addCandidateUrl(`https://europepmc.org/backend/ptpmcrender.fcgi?accid=${epmc.pmcid}&blobtype=pdf`);
+    }
+  }
+  if (oa?.ids?.pmcid) {
+    const pmcid = String(oa.ids.pmcid).replace(/^https?:\/\/.*\/(PMC\d+)\/?$/i, '$1');
+    if (/^PMC\d+$/i.test(pmcid)) {
+      addCandidateUrl(`https://europepmc.org/backend/ptpmcrender.fcgi?accid=${pmcid}&blobtype=pdf`);
+    }
+  }
+  if (cr && Array.isArray(cr.link)) {
+    for (const l of cr.link) {
+      if (l['content-type'] === 'application/pdf' || l['content-type'] === 'unspecified') {
+        addCandidateUrl(l.URL);
+      }
+    }
+  }
+  // Known publisher / preprint direct PDF patterns
+  if (/^10\.1101\//i.test(doi)) {
+    addCandidateUrl(`https://www.biorxiv.org/content/${doi}.full.pdf`);
+    addCandidateUrl(`https://www.medrxiv.org/content/${doi}.full.pdf`);
+  }
+  if (/^10\.18653\/v1\//i.test(doi)) {
+    const aclId = doi.split('/').pop();
+    if (aclId) addCandidateUrl(`https://aclanthology.org/${aclId}.pdf`);
+  }
+  if (/^10\.1371\/journal\./i.test(doi)) {
+    addCandidateUrl(`https://journals.plos.org/plosone/article/file?id=${encodeURIComponent(doi)}&type=printable`);
+  }
+  addCandidateUrl(`https://doi.org/${encodeURIComponent(doi)}`);
+
+  return {
+    type: 'doi',
+    arxivId: arxivId || null,
+    doi,
+    title: title || doi,
+    authors: authors || 'DOI',
+    foundMetadata: Boolean(cr || oa || s2 || epmc || (arxivByDoi && arxivByDoi.length > 0)),
+    candidatePdfUrls,
+  };
+}
+
+async function tryFetchPdfBuffer(url, visited = new Set()) {
+  if (!url || visited.has(url) || visited.size > 6) return null;
+  visited.add(url);
+
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15000);
+    const res = await fetch(url, {
+      redirect: 'follow',
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept': 'application/pdf,text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      },
+    });
+    clearTimeout(timer);
+
+    if (!res.ok) return null;
+
+    const arrayBuffer = await res.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    // Check PDF magic header %PDF-
+    if (buffer.length > 100 && buffer.subarray(0, 5).toString('ascii') === '%PDF-') {
+      return buffer;
+    }
+
+    // If HTML was returned, check for <meta name="citation_pdf_url" content="...">
+    const contentType = (res.headers.get('content-type') || '').toLowerCase();
+    if (contentType.includes('text/html') || buffer.subarray(0, 256).toString('utf8').includes('<html') || buffer.subarray(0, 256).toString('utf8').includes('<!DOCTYPE')) {
+      const html = buffer.subarray(0, 150000).toString('utf8');
+      const metaMatch =
+        html.match(/<meta[^>]+(?:name|property)=["']citation_pdf_url["'][^>]+content=["']([^"']+)["']/i) ||
+        html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+(?:name|property)=["']citation_pdf_url["']/i) ||
+        html.match(/<link[^>]+type=["']application\/pdf["'][^>]+href=["']([^"']+)["']/i);
+      if (metaMatch && metaMatch[1]) {
+        const resolvedPdfUrl = new URL(metaMatch[1].replace(/&amp;/g, '&'), res.url || url).toString();
+        return await tryFetchPdfBuffer(resolvedPdfUrl, visited);
+      }
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+// Paper Metadata Lookup Endpoint (supports both arXiv ID and DOI)
+app.post('/api/arxiv/lookup', async (req, res) => {
+  const rawQuery = req.body?.query || req.body?.arxivId || req.body?.doi || '';
+  if (!rawQuery || typeof rawQuery !== 'string' || !rawQuery.trim()) {
+    return res.status(400).json({ error: 'arXiv ID or DOI is required' });
   }
 
   try {
-    let title = cleanId;
-    let authors = 'arXiv';
+    const info = await resolvePaperMetadataAndCandidates(rawQuery.trim());
+    if (info.type === 'doi' && !info.foundMetadata && info.title === info.doi) {
+      return res.status(404).json({ error: `No paper found for DOI "${info.doi}"` });
+    }
+    res.json({
+      ok: true,
+      type: info.type,
+      arxivId: info.arxivId,
+      doi: info.doi,
+      title: info.title,
+      authors: info.authors,
+      hasPdfCandidates: info.candidatePdfUrls.length > 0,
+    });
+  } catch (err) {
+    res.status(400).json({ error: err.message || 'Failed to look up paper' });
+  }
+});
 
-    // Fetch arXiv metadata (Atom XML)
-    try {
-      const metaRes = await fetch(`https://export.arxiv.org/api/query?id_list=${encodeURIComponent(cleanId)}`);
-      if (metaRes.ok) {
-        const xml = await metaRes.text();
-        const titleMatch = xml.match(/<entry>[\s\S]*?<title>([\s\S]*?)<\/title>/i);
-        if (titleMatch && titleMatch[1]) {
-          title = titleMatch[1].replace(/\s+/g, ' ').trim();
-        }
-        const authorMatches = [...xml.matchAll(/<author>[\s\S]*?<name>([\s\S]*?)<\/name>[\s\S]*?<\/author>/gi)];
-        if (authorMatches.length > 0) {
-          const names = authorMatches.map(m => m[1].trim());
-          if (names.length <= 3) {
-            authors = names.join(', ');
-          } else {
-            authors = `${names.slice(0, 3).join(', ')} et al.`;
-          }
-        }
-      }
-    } catch (metaErr) {
-      console.warn('Failed to fetch arXiv metadata:', metaErr.message);
+// ArXiv & DOI Paper Downloader Proxy
+app.post('/api/arxiv/download', async (req, res) => {
+  const rawInput = req.body?.arxivId || req.body?.doi || req.body?.query || '';
+  if (!rawInput || typeof rawInput !== 'string' || !rawInput.trim()) {
+    return res.status(400).json({ error: 'arXiv ID, DOI, or URL is required' });
+  }
+
+  try {
+    const info = await resolvePaperMetadataAndCandidates(rawInput.trim());
+    if (info.type === 'doi' && !info.foundMetadata && info.title === info.doi) {
+      return res.status(404).json({ error: `Paper not found for DOI "${info.doi}"` });
     }
 
-    // Fetch PDF binary
-    let pdfRes = await fetch(`https://export.arxiv.org/pdf/${cleanId}.pdf`);
-    if (!pdfRes.ok) {
-      pdfRes = await fetch(`https://arxiv.org/pdf/${cleanId}.pdf`);
+    let pdfBuffer = null;
+    for (const candidateUrl of info.candidatePdfUrls) {
+      pdfBuffer = await tryFetchPdfBuffer(candidateUrl);
+      if (pdfBuffer) break;
     }
 
-    if (!pdfRes.ok) {
-      return res.status(404).json({ error: `Paper not found on arXiv for ID "${cleanId}" (HTTP ${pdfRes.status})` });
+    if (!pdfBuffer) {
+      const label = info.doi ? `DOI "${info.doi}" (${info.title})` : `arXiv ID "${info.arxivId}"`;
+      return res.status(404).json({
+        error: `Could not retrieve an open-access PDF for ${label}. If the paper is behind a publisher paywall, please upload the PDF directly.`,
+      });
     }
 
-    const arrayBuffer = await pdfRes.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    const pdfBase64 = buffer.toString('base64');
-
-    const cleanTitle = title.replace(/[\/\\:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim();
+    const pdfBase64 = pdfBuffer.toString('base64');
+    const cleanTitle = info.title.replace(/[\/\\:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim();
     const truncatedTitle = cleanTitle.length > 100 ? cleanTitle.substring(0, 100).trim() + '...' : cleanTitle;
-    const safeId = cleanId.replace(/[\/\\:*?"<>|]/g, '_');
+    const primaryId = info.arxivId || info.doi || 'paper';
+    const safeId = primaryId.replace(/[\/\\:*?"<>|]/g, '_');
     const filename = `${safeId} - ${truncatedTitle}.pdf`;
 
     res.json({
       ok: true,
-      arxivId: cleanId,
-      title,
-      authors,
+      arxivId: info.arxivId,
+      doi: info.doi,
+      title: info.title,
+      authors: info.authors,
       filename,
       pdfBase64,
     });
   } catch (err) {
-    console.error('arXiv download error:', err);
-    res.status(500).json({ error: 'Failed to download arXiv paper', details: err.message });
+    console.error('Paper download error:', err);
+    res.status(500).json({ error: 'Failed to download paper', details: err.message });
   }
 });
 

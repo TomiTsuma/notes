@@ -287,31 +287,57 @@ export const createNextcloudDirectory = async (dirPath: string): Promise<string>
   return targetDir;
 };
 
+export interface PaperLookupResult {
+  type: 'arxiv' | 'doi';
+  arxivId: string | null;
+  doi: string | null;
+  title: string;
+  authors: string;
+  hasPdfCandidates: boolean;
+}
+
+export const lookupPaperByIdentifier = async (query: string): Promise<PaperLookupResult> => {
+  const response = await fetch('/api/arxiv/lookup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `Paper lookup failed with HTTP ${response.status}`);
+  }
+
+  return await response.json();
+};
+
 export interface ArxivDownloadResult {
   filename: string;
   title: string;
   authors: string;
+  arxivId?: string | null;
+  doi?: string | null;
   remotePath: string;
   dataUrl: string;
 }
 
 export const fetchAndUploadArxivPaper = async (
-  arxivId: string,
+  arxivIdOrDoi: string,
   targetFolderPath: string
 ): Promise<ArxivDownloadResult> => {
   const response = await fetch('/api/arxiv/download', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ arxivId }),
+    body: JSON.stringify({ arxivId: arxivIdOrDoi, query: arxivIdOrDoi }),
   });
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error || `arXiv download failed with HTTP ${response.status}`);
+    throw new Error(errorData.error || `Paper download failed with HTTP ${response.status}`);
   }
 
   const data = await response.json();
-  const { title, authors, filename, pdfBase64 } = data;
+  const { title, authors, filename, pdfBase64, arxivId, doi } = data;
 
   const targetDir = normalizeRemotePath(targetFolderPath);
   const dataUrl = `data:application/pdf;base64,${pdfBase64}`;
@@ -337,6 +363,8 @@ export const fetchAndUploadArxivPaper = async (
     filename,
     title,
     authors,
+    arxivId,
+    doi,
     remotePath,
     dataUrl,
   };

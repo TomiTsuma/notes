@@ -168,6 +168,42 @@ export interface UserStreak {
   totalNotesCreated: number;
 }
 
+export type MindMapNodeType = 'idea' | 'sticky' | 'paper' | 'point';
+
+export interface MindMapNode {
+  id: string;
+  type: MindMapNodeType;
+  x: number;
+  y: number;
+  width?: number;
+  height?: number;
+  title: string;
+  content: string;
+  color: string;
+  linkedFileId?: string;
+  linkedPaperTitle?: string;
+  linkedPaperAuthors?: string;
+}
+
+export interface MindMapEdge {
+  id: string;
+  fromNodeId: string;
+  toNodeId: string;
+  label?: string;
+  color?: string;
+  style?: 'solid' | 'dashed';
+}
+
+export interface MindMapBoard {
+  id: string;
+  name: string;
+  projectId?: string | null;
+  nodes: MindMapNode[];
+  edges: MindMapEdge[];
+  strokes: Stroke[];
+  updatedAt: string;
+}
+
 export interface AppState {
   activeTool: ToolType;
   brushColor: string;
@@ -193,7 +229,7 @@ export interface AppState {
   isRecording: boolean;
   showRightPanel: boolean;
 
-  activeView: 'home' | 'projects' | 'kanban' | 'calendar' | 'canvas' | 'nextcloud';
+  activeView: 'home' | 'projects' | 'kanban' | 'calendar' | 'canvas' | 'nextcloud' | 'mindmap';
   selectedProjectId: string | null;
   currentBackground: string;
   theme: 'light' | 'dark';
@@ -204,6 +240,8 @@ export interface AppState {
   calendarEvents: CalendarEvent[];
   chatHistory: Record<string, ChatMessage[]>;
   userStreak: UserStreak;
+  mindMapBoards: MindMapBoard[];
+  activeMindMapId: string | null;
 
   palmRejection: boolean;
   markerStraightMode: boolean;
@@ -258,7 +296,11 @@ export interface AppState {
   setSmartNoteStatus: (docId: string, section: string, status: 'idle' | 'loading' | 'done' | 'error', content?: string) => void;
 
   // New Productivity Actions
-  setActiveView: (view: 'home' | 'projects' | 'kanban' | 'calendar' | 'canvas' | 'nextcloud') => void;
+  setActiveView: (view: 'home' | 'projects' | 'kanban' | 'calendar' | 'canvas' | 'nextcloud' | 'mindmap') => void;
+  setActiveMindMapId: (id: string | null) => void;
+  addMindMapBoard: (board: MindMapBoard) => void;
+  updateMindMapBoard: (id: string, updated: Partial<MindMapBoard>) => void;
+  deleteMindMapBoard: (id: string) => void;
   setSelectedProjectId: (id: string | null) => void;
   addProject: (project: Project) => void;
   deleteProject: (id: string) => void;
@@ -319,6 +361,8 @@ export function getPersistedSnapshot(state: AppState): Record<string, unknown> {
     calendarEvents: state.calendarEvents,
     chatHistory: state.chatHistory,
     userStreak: state.userStreak,
+    mindMapBoards: state.mindMapBoards,
+    activeMindMapId: state.activeMindMapId,
   };
 }
 
@@ -386,6 +430,79 @@ export const useAppStore = create<AppState>()((set) => ({
         totalTasksCompleted: 0,
         totalNotesCreated: 0
       },
+      activeMindMapId: 'board-1',
+      mindMapBoards: [
+        {
+          id: 'board-1',
+          name: 'Research Synthesis & Literature Map',
+          projectId: 'proj-1',
+          updatedAt: new Date().toISOString(),
+          nodes: [
+            {
+              id: 'mm-1',
+              type: 'idea',
+              x: 420,
+              y: 260,
+              width: 260,
+              title: 'Core Research Question',
+              content: 'How do discrete latent representations improve molecular graph generation accuracy & speed?',
+              color: 'sky',
+            },
+            {
+              id: 'mm-2',
+              type: 'paper',
+              x: 80,
+              y: 120,
+              width: 270,
+              title: 'Graph VQ-Transformer (GVT)',
+              content: 'Vector-quantized graph autoencoder paired with autoregressive transformer prior.',
+              color: 'rose',
+              linkedFileId: defaultPaperId,
+              linkedPaperTitle: '2512.02667v1_Graph_VQ-Transformer__GVT___Fast_and_Accurate_Molecular_Gene.pdf',
+              linkedPaperAuthors: 'arXiv:2512.02667',
+            },
+            {
+              id: 'mm-3',
+              type: 'sticky',
+              x: 800,
+              y: 130,
+              width: 220,
+              title: 'Key Hypothesis',
+              content: '• Quantized codebook prevents posterior collapse\n• Order-invariant node tokenization\n• 10x faster sampling than diffusion',
+              color: 'amber',
+            },
+            {
+              id: 'mm-4',
+              type: 'idea',
+              x: 800,
+              y: 380,
+              width: 250,
+              title: 'Ablation Experiments',
+              content: 'Compare codebook sizes (K = 512 vs 2048) on QM9 and ZINC-250k benchmarks.',
+              color: 'sage',
+            },
+            {
+              id: 'mm-5',
+              type: 'point',
+              x: 110,
+              y: 410,
+              width: 240,
+              title: 'Baseline Comparison',
+              content: 'Contrast against Attention Is All You Need & Graph Diffusion baselines.',
+              color: 'lilac',
+              linkedPaperTitle: 'Attention Is All You Need',
+              linkedPaperAuthors: 'Vaswani et al.',
+            },
+          ],
+          edges: [
+            { id: 'edge-1', fromNodeId: 'mm-2', toNodeId: 'mm-1', label: 'foundational paper', color: '#0a7aff', style: 'solid' },
+            { id: 'edge-2', fromNodeId: 'mm-1', toNodeId: 'mm-3', label: 'hypothesizes', color: '#f59e0b', style: 'solid' },
+            { id: 'edge-3', fromNodeId: 'mm-1', toNodeId: 'mm-4', label: 'validates via', color: '#10b981', style: 'solid' },
+            { id: 'edge-4', fromNodeId: 'mm-5', toNodeId: 'mm-1', label: 'prior work', color: '#8b5cf6', style: 'dashed' },
+          ],
+          strokes: [],
+        },
+      ],
 
       setActiveTool: (tool) => set({ activeTool: tool }),
       setBrushColor: (color) => set({ brushColor: color }),
@@ -783,6 +900,23 @@ export const useAppStore = create<AppState>()((set) => ({
       updateStreak: (updated) => set(state => ({ userStreak: { ...state.userStreak, ...updated } })),
       associateFileToProject: (fileId, projectId) => set(state => ({
         files: state.files.map(f => f.id === fileId ? { ...f, projectId } : f)
-      }))
+      })),
+      setActiveMindMapId: (id) => set({ activeMindMapId: id }),
+      addMindMapBoard: (board) => set(state => ({
+        mindMapBoards: [...state.mindMapBoards, board],
+        activeMindMapId: board.id,
+      })),
+      updateMindMapBoard: (id, updated) => set(state => ({
+        mindMapBoards: state.mindMapBoards.map(b =>
+          b.id === id ? { ...b, ...updated, updatedAt: new Date().toISOString() } : b
+        ),
+      })),
+      deleteMindMapBoard: (id) => set(state => {
+        const remaining = state.mindMapBoards.filter(b => b.id !== id);
+        return {
+          mindMapBoards: remaining,
+          activeMindMapId: state.activeMindMapId === id ? (remaining[0]?.id || null) : state.activeMindMapId,
+        };
+      }),
 }));
 

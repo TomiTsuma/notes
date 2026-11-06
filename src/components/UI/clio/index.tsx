@@ -406,6 +406,7 @@ export const VIEWS = [
   { id: 'home', label: 'Dashboard', icon: 'home' },
   { id: 'projects', label: 'Project Hub', icon: 'hub' },
   { id: 'nextcloud', label: 'Library', icon: 'cloud' },
+  { id: 'mindmap', label: 'Mind Map', icon: 'mindmap' },
   { id: 'kanban', label: 'Kanban Board', icon: 'kanban' },
   { id: 'calendar', label: 'Calendar', icon: 'calendar' },
   { id: 'canvas', label: 'Note Canvas', icon: 'canvas' },
@@ -862,7 +863,7 @@ export function FolderCard({ name, count, tone = 'sky', peek = 3, onClick }: { n
   );
 }
 
-export function PaperCard({ title, authors, arxiv, pages, tags = [], annotated, status, onClick }: { title: string; authors?: string; arxiv?: string; pages?: number; tags?: { name: string; color?: string }[]; annotated?: number; status?: string; onClick?: () => void }) {
+export function PaperCard({ title, authors, arxiv, doi, pages, tags = [], annotated, status, onClick }: { title: string; authors?: string; arxiv?: string; doi?: string; pages?: number; tags?: { name: string; color?: string }[]; annotated?: number; status?: string; onClick?: () => void }) {
   return (
     <Card hover className="cl-paper" onClick={onClick}>
       <div className="thumb">
@@ -873,6 +874,7 @@ export function PaperCard({ title, authors, arxiv, pages, tags = [], annotated, 
         <div className="auth">{authors}</div>
         <div className="meta">
           {arxiv && <span className="cl-mono cl-faint">arXiv:{arxiv}</span>}
+          {doi && <span className="cl-mono cl-faint">DOI:{doi}</span>}
           {pages && <span className="cl-mono cl-faint">· {pages} pp</span>}
           {annotated != null && (
             <Tag tone="lilac" icon="pencil">

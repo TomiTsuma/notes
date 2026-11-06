@@ -151,9 +151,10 @@ const DocumentViewer: React.FC = () => {
       w = Math.round(baseW * (customZoom / 100));
     }
 
-    const scale = w / baseW;
+    const computedW = Math.round(w);
+    const scale = computedW / baseW;
     return {
-      computedPageWidth: Math.round(w),
+      computedPageWidth: computedW,
       effectiveScale: scale > 0 ? scale : 1,
     };
   }, [basePageSize, containerDimensions, spreadMode, customZoom]);
@@ -768,10 +769,9 @@ const DocumentViewer: React.FC = () => {
               display: 'inline-block',
               width: computedPageWidth,
               touchAction: 'none',
-              transition: 'width 0.15s ease-out',
             }}
           >
-            <div ref={pdfContentRef}>
+            <div ref={pdfContentRef} style={{ display: 'flow-root' }}>
               {pdfData ? (
                 <Document
                   file={pdfData}

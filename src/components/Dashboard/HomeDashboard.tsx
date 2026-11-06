@@ -207,7 +207,7 @@ const HomeDashboard: React.FC = () => {
   const quickActionItems = [
     {
       icon: 'arxiv',
-      label: 'Import arXiv',
+      label: 'Import arXiv / DOI',
       tone: 'rose',
       onClick: () => setActiveView('nextcloud'),
     },
@@ -218,10 +218,10 @@ const HomeDashboard: React.FC = () => {
       onClick: handleCreateNote,
     },
     {
-      icon: 'sticky',
-      label: 'New sticky',
+      icon: 'mindmap',
+      label: 'Mind Map',
       tone: 'amber',
-      onClick: () => setActiveView('nextcloud'),
+      onClick: () => setActiveView('mindmap'),
     },
     {
       icon: 'canvas',
@@ -561,7 +561,7 @@ const HomeDashboard: React.FC = () => {
             ))
           ) : (
             <div style={{ padding: '24px', textAlign: 'center', color: 'var(--ink-3)', border: '1px dashed var(--line)', borderRadius: 'var(--radius)', gridColumn: 'span 3' }}>
-              No notebooks or papers yet. Click "New note" above or import papers from arXiv.
+              No notebooks or papers yet. Click "New note" above or import papers via arXiv or DOI.
             </div>
           )}
         </div>

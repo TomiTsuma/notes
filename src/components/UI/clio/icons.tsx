@@ -75,6 +75,7 @@ export const ICONS: Record<string, string> = {
   lock: 'M6 10.5h12v10H6zM8.5 10.5V7.5a3.5 3.5 0 0 1 7 0v3',
   server: 'M4.5 4.5h15v6h-15zM4.5 13.5h15v6h-15zM8 7.5h.01M8 16.5h.01',
   edit3: 'M12 20h8M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z',
+  mindmap: 'M9 9h6v6H9zM3 4h4v4H3zM17 4h4v4h-4zM3 16h4v4H3zM17 16h4v4h-4zM7 6l2 3M17 6l-2 3M7 18l2-3M17 18l-2-3',
 };
 
 interface IconProps {

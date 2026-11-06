@@ -20,6 +20,7 @@ const PERSIST_KEYS = [
   'activeView', 'selectedProjectId', 'currentBackground', 'theme',
   'calendarViewMode',
   'projects', 'kanbanTasks', 'calendarEvents', 'chatHistory', 'userStreak',
+  'mindMapBoards', 'activeMindMapId',
 ];
 
 function isDataUrl(value) {

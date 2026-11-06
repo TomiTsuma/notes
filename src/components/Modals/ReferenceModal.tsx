@@ -13,13 +13,25 @@ const ReferenceModal: React.FC<ReferenceModalProps> = ({ x, y, onSelect, onClose
   const [search, setSearch] = useState('');
   
   const fileResults = useMemo(() => {
-    const q = search.toLowerCase();
+    const q = search.trim().toLowerCase();
+    const qNorm = q
+      .replace(/^https?:\/\/(dx\.)?doi\.org\//i, '')
+      .replace(/^doi:\s*/i, '')
+      .replace(/^https?:\/\/(export\.)?arxiv\.org\/(abs|pdf)\//i, '')
+      .replace(/^arxiv:\s*/i, '');
     return files
       .filter(f => f.type === 'pdf' || f.name.endsWith('.pdf'))
       .filter(f => {
         if (!q) return true;
-        const tagNames = (f.tags || []).map(tid => tags.find(t => t.id === tid)?.name || '').join(' ');
-        return f.name.toLowerCase().includes(q) || tagNames.includes(q);
+        const nameLower = f.name.toLowerCase();
+        const nameSlashes = nameLower.replace(/_/g, '/');
+        const tagNames = (f.tags || []).map(tid => tags.find(t => t.id === tid)?.name || '').join(' ').toLowerCase();
+        return (
+          nameLower.includes(q) ||
+          nameSlashes.includes(qNorm) ||
+          nameLower.includes(qNorm.replace(/\//g, '_')) ||
+          tagNames.includes(q)
+        );
       })
       .map(f => ({ id: f.id, title: f.name, authors: (f.tags || []).map(tid => tags.find(t => t.id === tid)?.name).filter(Boolean).join(', ') || 'Local file' }));
   }, [files, tags, search]);
@@ -42,7 +54,7 @@ const ReferenceModal: React.FC<ReferenceModalProps> = ({ x, y, onSelect, onClose
         autoFocus
         value={search}
         onChange={e => setSearch(e.target.value)}
-        placeholder="Search papers by name or tag..."
+        placeholder="Search papers by name, tag, arXiv ID, or DOI..."
         style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid var(--border-color)', marginBottom: '8px' }}
       />
       <div style={{ maxHeight: '200px', overflowY: 'auto' }}>

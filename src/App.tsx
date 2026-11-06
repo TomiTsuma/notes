@@ -14,6 +14,7 @@ import KanbanBoard from './components/Kanban/KanbanBoard';
 import CalendarView from './components/Calendar/CalendarView';
 import NextcloudLibrary from './components/Nextcloud/NextcloudLibrary';
 import DocumentViewer from './components/Canvas/DocumentViewer';
+import MindMapView from './components/MindMap/MindMapView';
 import ToolPalette from './components/UI/ToolPalette';
 
 function App() {
@@ -124,6 +125,8 @@ function App() {
         return ['Home', 'Calendar'];
       case 'nextcloud':
         return ['Library', 'Papers'];
+      case 'mindmap':
+        return ['Workspace', 'Mind Map'];
       case 'canvas':
       default:
         return ['Papers', activeDoc ? activeDoc.name : 'Note Canvas'];
@@ -142,6 +145,8 @@ function App() {
         return <CalendarView />;
       case 'nextcloud':
         return <NextcloudLibrary />;
+      case 'mindmap':
+        return <MindMapView />;
       case 'canvas':
       default:
         return (

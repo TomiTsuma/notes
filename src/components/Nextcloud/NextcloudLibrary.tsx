@@ -7,11 +7,13 @@ import {
   downloadPaperFromNextcloud,
   uploadFileToNextcloud,
   fetchAndUploadArxivPaper,
+  lookupPaperByIdentifier,
   createNextcloudDirectory,
   normalizeRemotePath,
   getParentRemotePath,
   type NextcloudPaper,
   type NextcloudDirectory,
+  type PaperLookupResult,
 } from '../../services/nextcloud';
 import {
   ViewHeader,
@@ -56,6 +58,8 @@ const NextcloudLibrary: React.FC = () => {
   const [showArxivModal, setShowArxivModal] = useState(false);
   const [arxivIdInput, setArxivIdInput] = useState('');
   const [isImportingArxiv, setIsImportingArxiv] = useState(false);
+  const [isSearchingPaper, setIsSearchingPaper] = useState(false);
+  const [paperPreview, setPaperPreview] = useState<PaperLookupResult | null>(null);
   const [arxivError, setArxivError] = useState<string | null>(null);
 
   const [showConnModal, setShowConnModal] = useState(false);
@@ -148,6 +152,21 @@ const NextcloudLibrary: React.FC = () => {
     }
   };
 
+  const handleLookupPaper = async () => {
+    if (!arxivIdInput.trim()) return;
+    setIsSearchingPaper(true);
+    setArxivError(null);
+    setPaperPreview(null);
+    try {
+      const result = await lookupPaperByIdentifier(arxivIdInput.trim());
+      setPaperPreview(result);
+    } catch (err: any) {
+      setArxivError(err?.message || 'Could not find paper for the given arXiv ID or DOI.');
+    } finally {
+      setIsSearchingPaper(false);
+    }
+  };
+
   const handleImportArxiv = async () => {
     if (!arxivIdInput.trim()) return;
     setIsImportingArxiv(true);
@@ -165,12 +184,13 @@ const NextcloudLibrary: React.FC = () => {
         });
         setShowArxivModal(false);
         setArxivIdInput('');
+        setPaperPreview(null);
         loadPathContents(currentPath);
       } else {
-        setArxivError('Failed to fetch paper metadata from arXiv.');
+        setArxivError('Failed to fetch paper metadata.');
       }
     } catch (err: any) {
-      setArxivError(err?.message || 'Error downloading arXiv paper.');
+      setArxivError(err?.message || 'Error downloading paper.');
     } finally {
       setIsImportingArxiv(false);
     }
@@ -216,9 +236,13 @@ const NextcloudLibrary: React.FC = () => {
   const quickItems = [
     {
       icon: 'arxiv',
-      label: 'Import arXiv paper',
+      label: 'Import arXiv / DOI',
       tone: 'rose',
-      onClick: () => setShowArxivModal(true),
+      onClick: () => {
+        setArxivError(null);
+        setPaperPreview(null);
+        setShowArxivModal(true);
+      },
     },
     {
       icon: 'upload',
@@ -242,8 +266,32 @@ const NextcloudLibrary: React.FC = () => {
 
   const parentPath = getParentRemotePath(currentPath);
 
-  const filteredDirs = dirs.filter((d) => d.name.toLowerCase().includes(searchQuery.toLowerCase()));
-  const filteredPapers = papers.filter((p) => p.title.toLowerCase().includes(searchQuery.toLowerCase()));
+  const extractDoiFromTitle = (title: string): string | undefined => {
+    const m = title.match(/(10\.\d{4,9})[/_]([-._;()/:A-Za-z0-9]+)/);
+    if (!m) return undefined;
+    return `${m[1]}/${m[2].replace(/_/g, '/')}`;
+  };
+
+  const normalizedSearch = searchQuery.trim().toLowerCase();
+  const normalizedSearchDoi = normalizedSearch
+    .replace(/^https?:\/\/(dx\.)?doi\.org\//i, '')
+    .replace(/^doi:\s*/i, '')
+    .replace(/^https?:\/\/(export\.)?arxiv\.org\/(abs|pdf)\//i, '')
+    .replace(/^arxiv:\s*/i, '');
+
+  const filteredDirs = dirs.filter((d) => d.name.toLowerCase().includes(normalizedSearch));
+  const filteredPapers = papers.filter((p) => {
+    if (!normalizedSearch) return true;
+    const t = p.title.toLowerCase();
+    const a = (p.authors || '').toLowerCase();
+    const tNormalizedSlashes = t.replace(/_/g, '/');
+    return (
+      t.includes(normalizedSearch) ||
+      a.includes(normalizedSearch) ||
+      tNormalizedSlashes.includes(normalizedSearchDoi) ||
+      t.includes(normalizedSearchDoi.replace(/\//g, '_'))
+    );
+  });
 
   return (
     <div className="cl-view" style={{ padding: '32px 40px', width: '100%', boxSizing: 'border-box' }}>
@@ -267,10 +315,10 @@ const NextcloudLibrary: React.FC = () => {
         actions={
           <>
             <SearchField
-              placeholder="Search folders & papers…"
+              placeholder="Search by title, arXiv ID, or DOI…"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              style={{ width: 240 }}
+              style={{ width: 260 }}
             />
             <Button icon="sync" onClick={() => setShowConnModal(true)}>
               {nextcloudConnected ? 'Connection' : 'Connect'}
@@ -392,6 +440,7 @@ const NextcloudLibrary: React.FC = () => {
                     title={p.title}
                     authors={p.authors}
                     arxiv={p.title.match(/\d{4}\.\d{4,5}/)?.[0]}
+                    doi={extractDoiFromTitle(p.title)}
                     status="remote"
                     onClick={() => handleOpenPaper(p)}
                   />
@@ -409,7 +458,29 @@ const NextcloudLibrary: React.FC = () => {
                   fontSize: 13,
                 }}
               >
-                No PDF papers found in <code>{currentPath}</code>. Click <b>Upload PDF</b> or <b>Import arXiv paper</b> above to add papers to this folder.
+                {searchQuery.trim() ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+                    <div>
+                      No papers in <code>{currentPath}</code> matched <b>"{searchQuery.trim()}"</b>.
+                    </div>
+                    <Button
+                      variant="primary"
+                      icon="arxiv"
+                      onClick={() => {
+                        setArxivIdInput(searchQuery.trim());
+                        setArxivError(null);
+                        setPaperPreview(null);
+                        setShowArxivModal(true);
+                      }}
+                    >
+                      Search & Import "{searchQuery.trim()}" via arXiv / DOI
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    No PDF papers found in <code>{currentPath}</code>. Click <b>Upload PDF</b> or <b>Import arXiv / DOI</b> above to add papers to this folder.
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -435,28 +506,53 @@ const NextcloudLibrary: React.FC = () => {
         </Modal>
       )}
 
-      {/* ArXiv Import Modal */}
+      {/* ArXiv / DOI Import Modal */}
       {showArxivModal && (
         <Modal
-          title="Import paper from arXiv"
-          description={`Download paper PDF directly into Nextcloud directory (${currentPath}).`}
+          title="Search & Import Paper (arXiv or DOI)"
+          description={`Search by arXiv ID or DOI and download the PDF directly into Nextcloud (${currentPath}).`}
           onClose={() => setShowArxivModal(false)}
           footer={
             <>
               <Button onClick={() => setShowArxivModal(false)}>Cancel</Button>
-              <Button variant="primary" icon="arxiv" onClick={handleImportArxiv} disabled={isImportingArxiv}>
+              <Button onClick={handleLookupPaper} disabled={isSearchingPaper || isImportingArxiv || !arxivIdInput.trim()}>
+                {isSearchingPaper ? 'Searching…' : 'Search Metadata'}
+              </Button>
+              <Button variant="primary" icon="arxiv" onClick={handleImportArxiv} disabled={isImportingArxiv || !arxivIdInput.trim()}>
                 {isImportingArxiv ? 'Downloading…' : 'Import & Save'}
               </Button>
             </>
           }
         >
           <TextField
-            label="arXiv ID or URL"
-            placeholder="e.g. 2512.02667 or https://arxiv.org/abs/2512.02667"
+            label="arXiv ID, DOI, or URL"
+            placeholder="e.g. 2512.02667, 10.1038/nature14539, or https://doi.org/..."
             value={arxivIdInput}
-            onChange={(e) => setArxivIdInput(e.target.value)}
+            onChange={(e) => {
+              setArxivIdInput(e.target.value);
+              if (paperPreview) setPaperPreview(null);
+            }}
             error={arxivError || undefined}
           />
+          {paperPreview && (
+            <div
+              style={{
+                marginTop: 12,
+                padding: '12px 14px',
+                borderRadius: 'var(--radius-md)',
+                background: 'var(--surface-inset)',
+                border: '1px solid var(--line)',
+                fontSize: 13,
+              }}
+            >
+              <div style={{ fontWeight: 700, color: 'var(--ink)', marginBottom: 4 }}>{paperPreview.title}</div>
+              <div style={{ color: 'var(--ink-2)', fontSize: 12, marginBottom: 6 }}>{paperPreview.authors}</div>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: 11 }} className="cl-mono cl-faint">
+                {paperPreview.arxivId && <span>arXiv:{paperPreview.arxivId}</span>}
+                {paperPreview.doi && <span>DOI:{paperPreview.doi}</span>}
+              </div>
+            </div>
+          )}
         </Modal>
       )}
     </div>

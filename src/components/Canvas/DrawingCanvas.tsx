@@ -186,11 +186,7 @@ const DrawingCanvas: React.FC<{
   baseHeight?: number;
 }> = ({
   documentId,
-  width: propWidth,
-  height: propHeight,
   scale: propScale = 1,
-  baseWidth: propBaseWidth,
-  baseHeight: propBaseHeight,
 }) => {
   const activeTool = useAppStore(s => s.activeTool);
   const brushColor = useAppStore(s => s.brushColor);
@@ -222,10 +218,6 @@ const DrawingCanvas: React.FC<{
   const isErasingRef = useRef(false);
   const snapModeRef = useRef(false);
   const holdAnchorRef = useRef<{ x: number, y: number } | null>(null);
-  const [canvasDims, setCanvasDims] = useState({
-    w: propBaseWidth || propWidth || 800,
-    h: propBaseHeight || propHeight || 1200,
-  });
   
   // Lasso state
   const [lassoBox, setLassoBox] = useState<Box | null>(null);
@@ -314,6 +306,11 @@ const DrawingCanvas: React.FC<{
     }
     window.addEventListener('scroll', scrollHandler, { passive: true });
     scrollTargets.push(window);
+    const vv = window.visualViewport;
+    if (vv) {
+      vv.addEventListener('resize', scrollHandler, { passive: true });
+      vv.addEventListener('scroll', scrollHandler, { passive: true });
+    }
 
     // Process coalesced events and draw incrementally
     const processDrawingEvents = () => {
@@ -325,6 +322,7 @@ const DrawingCanvas: React.FC<{
       const tool = activeToolRef.current;
       if (!INK_TOOLS.has(tool)) return;
 
+      updateRect();
       const rl = rectRef.current.left;
       const rt = rectRef.current.top;
       const s = scaleRef.current || 1;
@@ -390,16 +388,14 @@ const DrawingCanvas: React.FC<{
       const tool = activeToolRef.current;
       if (!effectiveDocIdRef.current) return;
 
-      const rl = rectRef.current.left;
-      const rt = rectRef.current.top;
-
       // Erase only while a drag that began on this canvas is in progress, and only
       // commit when a stroke was actually hit — otherwise every move re-renders.
       if (tool === 'eraser') {
         if (!isErasingRef.current || e.pointerId !== drawingPointerIdRef.current) return;
+        updateRect();
         const s = scaleRef.current || 1;
-        const x = (e.clientX - rl) / s;
-        const y = (e.clientY - rt) / s;
+        const x = (e.clientX - rectRef.current.left) / s;
+        const y = (e.clientY - rectRef.current.top) / s;
         const docId = effectiveDocIdRef.current;
         const bs = brushSizeRef.current;
         setStrokes(docId, prev => {
@@ -531,34 +527,15 @@ const DrawingCanvas: React.FC<{
       for (const t of scrollTargets) {
         t.removeEventListener('scroll', scrollHandler);
       }
+      if (vv) {
+        vv.removeEventListener('resize', scrollHandler);
+        vv.removeEventListener('scroll', scrollHandler);
+      }
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
       window.removeEventListener('pointercancel', onPointerUp);
     };
   }, [setStrokes]);
-
-  // Track container dimensions for accurate SVG coordinate system
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const updateCanvasDimensions = () => {
-      const rect = el.getBoundingClientRect();
-      const parentH = el.parentElement?.scrollHeight || el.offsetHeight;
-      const s = scaleRef.current || 1;
-      const w = propBaseWidth || propWidth || (rect.width > 0 ? rect.width / s : 800);
-      const h = propBaseHeight || propHeight || (rect.height > 0 ? Math.max(rect.height / s, parentH / s) : 800);
-      setCanvasDims({ w, h });
-    };
-    updateCanvasDimensions();
-    const ro = new ResizeObserver(updateCanvasDimensions);
-    ro.observe(el);
-    if (el.parentElement) ro.observe(el.parentElement);
-    window.addEventListener('resize', updateCanvasDimensions);
-    return () => {
-      ro.disconnect();
-      window.removeEventListener('resize', updateCanvasDimensions);
-    };
-  }, [activeDocumentId, propWidth, propHeight, propBaseWidth, propBaseHeight, propScale]);
 
   const getCoords = (clientX: number, clientY: number) => {
     const rect = containerRef.current?.getBoundingClientRect();
@@ -759,36 +736,37 @@ const DrawingCanvas: React.FC<{
       onPointerMove={handlePointerMoveReact}
       onPointerUp={handlePointerUpReact}
     >
-      {/* SVG layer for finalized strokes */}
+      {/* SVG layer for finalized strokes — no viewBox so user units match top-left CSS pixels 1:1 (scaled by propScale) */}
       <svg
         width="100%"
         height="100%"
-        viewBox={`0 0 ${canvasDims.w} ${canvasDims.h}`}
-        style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none', overflow: 'visible' }}
+        style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', overflow: 'visible' }}
       >
-        <g className="highlighter-strokes" style={{ mixBlendMode: 'multiply' }}>
-          {highlighterEls}
-          <path ref={liveHlPathRef} d="" fill="none" strokeLinecap="round" strokeLinejoin="round" opacity={0.35} />
-        </g>
-        <g className="pen-strokes">
-          {penEls}
-          <path ref={livePenPathRef} d="" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-        </g>
+        <g transform={propScale !== 1 ? `scale(${propScale})` : undefined}>
+          <g className="highlighter-strokes" style={{ mixBlendMode: 'multiply' }}>
+            {highlighterEls}
+            <path ref={liveHlPathRef} d="" fill="none" strokeLinecap="round" strokeLinejoin="round" opacity={0.35} />
+          </g>
+          <g className="pen-strokes">
+            {penEls}
+            <path ref={livePenPathRef} d="" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+          </g>
 
-        {/* Lasso selection box layer */}
-        {activeTool === 'select' && lassoBox && (
-          <rect 
-            x={lassoBox.w < 0 ? lassoBox.x + lassoBox.w : lassoBox.x}
-            y={lassoBox.h < 0 ? lassoBox.y + lassoBox.h : lassoBox.y}
-            width={Math.abs(lassoBox.w)}
-            height={Math.abs(lassoBox.h)}
-            fill="rgba(0, 122, 255, 0.1)"
-            stroke="#007aff"
-            strokeWidth="1.5"
-            strokeDasharray="4 4"
-            style={{ transform: isDraggingLasso ? `translate(${lassoOffset.x}px, ${lassoOffset.y}px)` : 'none' }}
-          />
-        )}
+          {/* Lasso selection box layer */}
+          {activeTool === 'select' && lassoBox && (
+            <rect 
+              x={lassoBox.w < 0 ? lassoBox.x + lassoBox.w : lassoBox.x}
+              y={lassoBox.h < 0 ? lassoBox.y + lassoBox.h : lassoBox.y}
+              width={Math.abs(lassoBox.w)}
+              height={Math.abs(lassoBox.h)}
+              fill="rgba(0, 122, 255, 0.1)"
+              stroke="#007aff"
+              strokeWidth="1.5"
+              strokeDasharray="4 4"
+              style={{ transform: isDraggingLasso ? `translate(${lassoOffset.x}px, ${lassoOffset.y}px)` : 'none' }}
+            />
+          )}
+        </g>
       </svg>
     </div>
   );
