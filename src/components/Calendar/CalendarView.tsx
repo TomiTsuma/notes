@@ -178,20 +178,34 @@ const CalendarView: React.FC = () => {
     }
   }, []);
 
-  const syncGoogleEvents = async () => {
+  const syncGoogleEvents = async (centerDate: Date = activeDate, quiet = false) => {
     setIsSyncingGoogle(true);
-    setSyncNotice(null);
+    if (!quiet) setSyncNotice(null);
     try {
-      const gEvents = await fetchGoogleCalendarEvents();
+      const timeMin = new Date(centerDate.getTime() - 60 * 24 * 60 * 60 * 1000).toISOString();
+      const timeMax = new Date(centerDate.getTime() + 120 * 24 * 60 * 60 * 1000).toISOString();
+      const gEvents = await fetchGoogleCalendarEvents(timeMin, timeMax);
       mergeExternalEvents(gEvents, 'google');
-      setSyncNotice(`Synced ${gEvents.length} events from Google Calendar.`);
-      setTimeout(() => setSyncNotice(null), 4000);
+      if (!quiet) {
+        setSyncNotice(`Synced ${gEvents.length} events from Google Calendar.`);
+        setTimeout(() => setSyncNotice(null), 4000);
+      }
     } catch (err: any) {
-      setSyncNotice(`Google Calendar sync error: ${err.message}`);
+      if (!quiet) {
+        setSyncNotice(`Google Calendar sync error: ${err.message}`);
+      }
     } finally {
       setIsSyncingGoogle(false);
     }
   };
+
+  // Re-sync when user navigates across months while connected
+  const activeMonthKey = `${activeDate.getFullYear()}-${activeDate.getMonth()}`;
+  useEffect(() => {
+    if (googleStatus.connected) {
+      syncGoogleEvents(activeDate, true);
+    }
+  }, [activeMonthKey]);
 
   const handleConnectGoogle = async () => {
     try {
@@ -390,6 +404,9 @@ const CalendarView: React.FC = () => {
     scrollToCurrentTime(true);
   };
 
+  const isAllDayEvent = (ev: CalendarEvent) =>
+    !ev.startTime || ev.startTime === 'All day' || (ev.startTime === '00:00' && ev.endTime === '23:59');
+
   // Calculate event vertical position and height with minute precision
   const getEventPosition = (ev: CalendarEvent) => {
     const [startH, startM] = (ev.startTime || '09:00').split(':').map((v) => parseInt(v, 10) || 0);
@@ -407,7 +424,50 @@ const CalendarView: React.FC = () => {
     const duration = Math.max(0.45, endFraction - startFraction);
     const top = startFraction * HOUR_HEIGHT + 2;
     const height = Math.max(26, duration * HOUR_HEIGHT - 4);
-    return { top, height };
+    return { top, height, startFraction, endFraction };
+  };
+
+  // Compute side-by-side column lanes for overlapping timed events on the same day
+  const layoutTimedEvents = (events: CalendarEvent[]) => {
+    const positioned = events
+      .map((ev) => ({ ev, ...getEventPosition(ev), col: 0, totalCols: 1 }))
+      .sort((a, b) => a.startFraction - b.startFraction || b.endFraction - a.endFraction);
+
+    const groups: (typeof positioned)[] = [];
+    let currentGroup: typeof positioned = [];
+    let groupMaxEnd = -1;
+
+    for (const item of positioned) {
+      if (currentGroup.length === 0 || item.startFraction < groupMaxEnd - 0.01) {
+        currentGroup.push(item);
+        groupMaxEnd = Math.max(groupMaxEnd, item.endFraction);
+      } else {
+        groups.push(currentGroup);
+        currentGroup = [item];
+        groupMaxEnd = item.endFraction;
+      }
+    }
+    if (currentGroup.length > 0) groups.push(currentGroup);
+
+    for (const group of groups) {
+      const colEnds: number[] = [];
+      for (const item of group) {
+        let placedCol = colEnds.findIndex((end) => end <= item.startFraction + 0.01);
+        if (placedCol === -1) {
+          placedCol = colEnds.length;
+          colEnds.push(item.endFraction);
+        } else {
+          colEnds[placedCol] = item.endFraction;
+        }
+        item.col = placedCol;
+      }
+      const totalCols = Math.max(1, colEnds.length);
+      for (const item of group) {
+        item.totalCols = totalCols;
+      }
+    }
+
+    return positioned;
   };
 
   // Current real-time line position
@@ -521,7 +581,7 @@ const CalendarView: React.FC = () => {
                     size="sm"
                     variant="secondary"
                     icon="refresh"
-                    onClick={syncGoogleEvents}
+                    onClick={() => syncGoogleEvents(activeDate, false)}
                     disabled={isSyncingGoogle}
                     style={{ flex: 1 }}
                   >
@@ -698,6 +758,8 @@ const CalendarView: React.FC = () => {
                 {/* Row 2: 7 Day Columns (Full 24-Hour Timeline) */}
                 {weekDays.map((day) => {
                   const dayEvents = calendarEvents.filter((e) => e.date === day.dateStr);
+                  const allDayList = dayEvents.filter(isAllDayEvent);
+                  const timedList = layoutTimedEvents(dayEvents.filter((e) => !isAllDayEvent(e)));
 
                   return (
                     <div
@@ -708,6 +770,46 @@ const CalendarView: React.FC = () => {
                         position: 'relative',
                       }}
                     >
+                      {/* All-Day Events Banner */}
+                      {allDayList.length > 0 && (
+                        <div
+                          style={{
+                            position: 'sticky',
+                            top: 48,
+                            zIndex: 15,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: 2,
+                            padding: '2px 4px',
+                            background: 'var(--surface-raised)',
+                            borderBottom: '1px solid var(--line)',
+                          }}
+                        >
+                          {allDayList.map((ev) => (
+                            <div
+                              key={ev.id}
+                              onClick={() => updateCalendarEvent(ev.id, { completed: !ev.completed })}
+                              style={{
+                                fontSize: 10,
+                                fontWeight: 600,
+                                padding: '2px 6px',
+                                borderRadius: 4,
+                                background: 'rgba(10, 122, 255, 0.14)',
+                                color: 'var(--accent, #0a7aff)',
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                cursor: 'pointer',
+                                textDecoration: ev.completed ? 'line-through' : 'none',
+                              }}
+                              title={ev.title}
+                            >
+                              {ev.title}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
                       {/* Live "Now" Line indicator */}
                       {day.isToday && (
                         <div
@@ -741,10 +843,11 @@ const CalendarView: React.FC = () => {
                         </div>
                       )}
 
-                      {/* Events */}
-                      {dayEvents.map((ev) => {
-                        const { top, height } = getEventPosition(ev);
+                      {/* Timed Events */}
+                      {timedList.map(({ ev, top, height, col, totalCols }) => {
                         const tone = ev.source === 'google' ? 'sky' : ev.color || 'sky';
+                        const colWidthPct = 100 / totalCols;
+                        const leftPct = col * colWidthPct;
                         return (
                           <EventBlock
                             key={ev.id}
@@ -757,9 +860,9 @@ const CalendarView: React.FC = () => {
                               top,
                               height,
                               position: 'absolute',
-                              left: 4,
-                              right: 4,
-                              zIndex: 5,
+                              left: `calc(${leftPct}% + 2px)`,
+                              width: `calc(${colWidthPct}% - 4px)`,
+                              zIndex: 5 + col,
                             }}
                           />
                         );
@@ -890,29 +993,55 @@ const CalendarView: React.FC = () => {
                   )}
 
                   {calendarEvents
-                    .filter((e) => e.date === activeDateStr)
-                    .map((ev) => {
-                      const { top, height } = getEventPosition(ev);
-                      const tone = ev.source === 'google' ? 'sky' : ev.color || 'sky';
-                      return (
-                        <EventBlock
-                          key={ev.id}
-                          title={ev.source === 'google' ? `[Google] ${ev.title}` : ev.title}
-                          time={`${ev.startTime || '09:00'}${ev.endTime ? `–${ev.endTime}` : ''}`}
-                          tone={tone}
-                          done={!!ev.completed}
-                          onClick={() => updateCalendarEvent(ev.id, { completed: !ev.completed })}
-                          style={{
-                            top,
-                            height: Math.max(height, 36),
-                            position: 'absolute',
-                            left: 12,
-                            right: 12,
-                            zIndex: 5,
-                          }}
-                        />
-                      );
-                    })}
+                    .filter((e) => e.date === activeDateStr && isAllDayEvent(e))
+                    .map((ev) => (
+                      <div
+                        key={ev.id}
+                        onClick={() => updateCalendarEvent(ev.id, { completed: !ev.completed })}
+                        style={{
+                          position: 'sticky',
+                          top: 44,
+                          zIndex: 15,
+                          margin: '4px 12px',
+                          padding: '4px 10px',
+                          borderRadius: 6,
+                          background: 'rgba(10, 122, 255, 0.14)',
+                          color: 'var(--accent, #0a7aff)',
+                          fontSize: 12,
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          textDecoration: ev.completed ? 'line-through' : 'none',
+                        }}
+                      >
+                        All day · {ev.title}
+                      </div>
+                    ))}
+
+                  {layoutTimedEvents(
+                    calendarEvents.filter((e) => e.date === activeDateStr && !isAllDayEvent(e))
+                  ).map(({ ev, top, height, col, totalCols }) => {
+                    const tone = ev.source === 'google' ? 'sky' : ev.color || 'sky';
+                    const colWidthPct = 100 / totalCols;
+                    const leftPct = col * colWidthPct;
+                    return (
+                      <EventBlock
+                        key={ev.id}
+                        title={ev.source === 'google' ? `[Google] ${ev.title}` : ev.title}
+                        time={`${ev.startTime || '09:00'}${ev.endTime ? `–${ev.endTime}` : ''}`}
+                        tone={tone}
+                        done={!!ev.completed}
+                        onClick={() => updateCalendarEvent(ev.id, { completed: !ev.completed })}
+                        style={{
+                          top,
+                          height: Math.max(height, 36),
+                          position: 'absolute',
+                          left: `calc(${leftPct}% + 10px)`,
+                          width: `calc(${colWidthPct}% - 20px)`,
+                          zIndex: 5 + col,
+                        }}
+                      />
+                    );
+                  })}
                 </div>
               </div>
             </div>

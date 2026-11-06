@@ -54,6 +54,12 @@ export async function fetchGoogleCalendarEvents(timeMin?: string, timeMax?: stri
   const params = new URLSearchParams();
   if (timeMin) params.set('timeMin', timeMin);
   if (timeMax) params.set('timeMax', timeMax);
+  try {
+    const clientTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (clientTz) params.set('timeZone', clientTz);
+  } catch {
+    // ignore
+  }
 
   const res = await fetch(`/api/google/events?${params.toString()}`);
   if (!res.ok) {

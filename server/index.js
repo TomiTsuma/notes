@@ -81,6 +81,27 @@ app.use('/api/nextcloud', (req, res) => {
     delete proxyHeaders['x-nextcloud-target-url'];
     proxyHeaders.host = targetParsed.host;
 
+    // Use server-side .env NEXTCLOUD_USERNAME & NEXTCLOUD_PASSWORD if client did not provide password
+    if (process.env.NEXTCLOUD_USERNAME && process.env.NEXTCLOUD_PASSWORD) {
+      const authHeader = String(proxyHeaders.authorization || '');
+      let shouldInjectEnvAuth = !authHeader;
+      if (authHeader.startsWith('Basic ')) {
+        try {
+          const decoded = Buffer.from(authHeader.slice(6), 'base64').toString('utf8');
+          if (decoded.endsWith(':') || decoded.endsWith(':__ENV__')) {
+            shouldInjectEnvAuth = true;
+          }
+        } catch {
+          // ignore
+        }
+      }
+      if (shouldInjectEnvAuth) {
+        proxyHeaders.authorization = `Basic ${Buffer.from(
+          `${process.env.NEXTCLOUD_USERNAME}:${process.env.NEXTCLOUD_PASSWORD}`
+        ).toString('base64')}`;
+      }
+    }
+
     const proxyReq = protocol.request(
       {
         hostname: targetParsed.hostname,
@@ -775,8 +796,8 @@ app.post('/api/google/disconnect', (_req, res) => {
 
 app.get('/api/google/events', async (req, res) => {
   try {
-    const { timeMin, timeMax } = req.query;
-    const events = await getGoogleCalendarEvents(timeMin, timeMax);
+    const { timeMin, timeMax, timeZone } = req.query;
+    const events = await getGoogleCalendarEvents(timeMin, timeMax, timeZone);
     res.json({ ok: true, events });
   } catch (err) {
     res.status(500).json({ error: err.message });

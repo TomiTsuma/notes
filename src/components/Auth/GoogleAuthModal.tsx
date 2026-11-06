@@ -17,9 +17,9 @@ const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ open, onClose }) => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [customEmail, setCustomEmail] = useState(
-    import.meta.env.VITE_USER_EMAIL || 'tommytsuma7@gmail.com'
+    import.meta.env.VITE_USER_EMAIL || ''
   );
-  const [customName, setCustomName] = useState(import.meta.env.VITE_USER_NAME || 'Thomas');
+  const [customName, setCustomName] = useState(import.meta.env.VITE_USER_NAME || '');
 
   if (!open) return null;
 
@@ -112,7 +112,7 @@ const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ open, onClose }) => {
             <div>
               <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Google Authentication</h3>
               <div style={{ fontSize: 12, color: 'var(--ink-3)' }}>
-                Firebase Auth · Project <span className="cl-mono">karma-fcf68</span>
+                Firebase Auth · Server-configured (.env)
               </div>
             </div>
           </div>
@@ -298,3 +298,4 @@ const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ open, onClose }) => {
 };
 
 export default GoogleAuthModal;
+

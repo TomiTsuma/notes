@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { get } from 'idb-keyval';
 import { useAppStore, getPersistedSnapshot } from '../store/appStore';
 import { fetchBootstrap, saveBootstrap } from '../services/api';
+import { fetchGoogleStatus, fetchGoogleCalendarEvents } from '../services/calendarSyncService';
 
 // Each save serialises the whole store, which is dominated by stroke data. A short
 // window meant a multi-megabyte stringify on the main thread between pen strokes.
@@ -78,6 +79,19 @@ export function useStoreSync() {
 
         syncPaused.current = false;
         setLoading(false);
+
+        // Auto-sync Google Calendar events after bootstrap hydration so they are never overwritten
+        fetchGoogleStatus()
+          .then((status) => {
+            if (status.connected && !cancelled) {
+              return fetchGoogleCalendarEvents().then((events) => {
+                if (!cancelled) {
+                  useAppStore.getState().mergeExternalEvents(events, 'google');
+                }
+              });
+            }
+          })
+          .catch(() => {});
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : 'Failed to load data');

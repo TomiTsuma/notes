@@ -1,25 +1,31 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT_DIR = path.resolve(__dirname, '..');
+dotenv.config({ path: path.resolve(ROOT_DIR, '.env') });
+dotenv.config();
+
 const DATA_DIR = process.env.CLIO_DATA_DIR || path.join(ROOT_DIR, 'data');
 const AUTH_SESSION_FILE = path.join(DATA_DIR, 'firebase_auth_session.json');
 
-// Default known config for karma-fcf68 (fetched via service account)
-const FALLBACK_WEB_CONFIG = {
-  projectId: 'karma-fcf68',
-  appId: '1:281104290097:web:9d592b8b8b288fa4bd2010',
-  databaseURL: 'https://karma-fcf68-default-rtdb.firebaseio.com',
-  storageBucket: 'karma-fcf68.firebasestorage.app',
-  apiKey: 'AIzaSyCdNRMBSHzLlqmYwYJv2twiyjX5IBqG75A',
-  authDomain: 'karma-fcf68.firebaseapp.com',
-  messagingSenderId: '281104290097',
-  measurementId: 'G-90GN6XHFLQ',
-};
+function getEnvWebConfig() {
+  const projectId = process.env.FIREBASE_PROJECT_ID || '';
+  return {
+    projectId,
+    appId: process.env.FIREBASE_APP_ID || '',
+    databaseURL: process.env.FIREBASE_DATABASE_URL || (projectId ? `https://${projectId}-default-rtdb.firebaseio.com` : ''),
+    storageBucket: process.env.FIREBASE_STORAGE_BUCKET || (projectId ? `${projectId}.firebasestorage.app` : ''),
+    apiKey: process.env.FIREBASE_WEB_API_KEY || '',
+    authDomain: process.env.FIREBASE_AUTH_DOMAIN || (projectId ? `${projectId}.firebaseapp.com` : ''),
+    messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID || '',
+    measurementId: process.env.FIREBASE_MEASUREMENT_ID || '',
+  };
+}
 
 let cachedServiceAccount = null;
 let cachedAccessToken = null;
@@ -30,36 +36,49 @@ const authorizedHostCache = new Set(['localhost', '127.0.0.1', 'chlio.ereuna.org
 export function loadFirebaseServiceAccount() {
   if (cachedServiceAccount) return cachedServiceAccount;
 
-  const explicitPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
-  const candidates = [
-    explicitPath,
-    path.join(ROOT_DIR, 'karma-fcf68-firebase-adminsdk-jv4hn-00f39145dc.json'),
-    path.join(__dirname, 'karma-fcf68-firebase-adminsdk-jv4hn-00f39145dc.json'),
-  ].filter(Boolean);
-
-  // Also scan ROOT_DIR for any *-firebase-adminsdk-*.json
-  try {
-    const files = fs.readdirSync(ROOT_DIR);
-    for (const f of files) {
-      if (f.includes('firebase-adminsdk') && f.endsWith('.json')) {
-        candidates.push(path.join(ROOT_DIR, f));
-      }
-    }
-  } catch {
-    // ignore
+  // 1. Primary: Read from .env variables (FIREBASE_PROJECT_ID, FIREBASE_PRIVATE_KEY, FIREBASE_CLIENT_EMAIL)
+  if (
+    process.env.FIREBASE_PROJECT_ID &&
+    process.env.FIREBASE_PRIVATE_KEY &&
+    process.env.FIREBASE_CLIENT_EMAIL
+  ) {
+    cachedServiceAccount = {
+      type: 'service_account',
+      project_id: process.env.FIREBASE_PROJECT_ID.trim(),
+      private_key_id: (process.env.FIREBASE_PRIVATE_KEY_ID || '').trim(),
+      private_key: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+      client_email: process.env.FIREBASE_CLIENT_EMAIL.trim(),
+      client_id: (process.env.FIREBASE_CLIENT_ID || '').trim(),
+      token_uri: (process.env.FIREBASE_TOKEN_URI || 'https://oauth2.googleapis.com/token').trim(),
+    };
+    return cachedServiceAccount;
   }
 
-  for (const filePath of candidates) {
+  // 2. Secondary: Read from inline JSON string in .env if provided
+  if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
     try {
-      if (filePath && fs.existsSync(filePath)) {
-        const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-        if (parsed && parsed.project_id && parsed.private_key && parsed.client_email) {
-          cachedServiceAccount = parsed;
-          return cachedServiceAccount;
-        }
+      const parsed = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+      if (parsed?.project_id && parsed?.private_key && parsed?.client_email) {
+        parsed.private_key = String(parsed.private_key).replace(/\\n/g, '\n');
+        cachedServiceAccount = parsed;
+        return cachedServiceAccount;
       }
     } catch (err) {
-      console.warn('Failed to parse Firebase service account file:', filePath, err.message);
+      console.warn('Failed to parse FIREBASE_SERVICE_ACCOUNT_JSON from .env:', err.message);
+    }
+  }
+
+  // 3. Fallback: Read from explicit path in .env if provided
+  const explicitPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
+  if (explicitPath && fs.existsSync(explicitPath)) {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(explicitPath, 'utf8'));
+      if (parsed?.project_id && parsed?.private_key && parsed?.client_email) {
+        cachedServiceAccount = parsed;
+        return cachedServiceAccount;
+      }
+    } catch (err) {
+      console.warn('Failed to parse Firebase service account file:', explicitPath, err.message);
     }
   }
 
@@ -67,12 +86,12 @@ export function loadFirebaseServiceAccount() {
 }
 
 /**
- * Use the Firebase Admin Service Account JSON to mint an OAuth2 access token
+ * Use the Firebase Admin Service Account from .env to mint an OAuth2 access token
  */
 export async function getServiceAccountAccessToken() {
   const sa = loadFirebaseServiceAccount();
   if (!sa) {
-    throw new Error('Firebase service account JSON file not found');
+    throw new Error('Firebase service account credentials not configured in .env');
   }
 
   const now = Math.floor(Date.now() / 1000);
@@ -162,7 +181,7 @@ export async function ensureAuthorizedDomain(hostname) {
 }
 
 /**
- * Fetch the Firebase Web App config from Firebase Management API using the Service Account JSON
+ * Fetch the Firebase Web App config from .env or Firebase Management API
  */
 export async function getFirebaseWebConfig(hostname) {
   if (hostname) {
@@ -170,9 +189,15 @@ export async function getFirebaseWebConfig(hostname) {
   }
   if (cachedWebConfig) return cachedWebConfig;
 
+  const envConfig = getEnvWebConfig();
+  if (envConfig.projectId && envConfig.apiKey && envConfig.appId) {
+    cachedWebConfig = envConfig;
+    return cachedWebConfig;
+  }
+
   try {
     const sa = loadFirebaseServiceAccount();
-    if (!sa) return FALLBACK_WEB_CONFIG;
+    if (!sa) return envConfig;
 
     const token = await getServiceAccountAccessToken();
     const appsRes = await fetch(
@@ -191,23 +216,23 @@ export async function getFirebaseWebConfig(hostname) {
           const cfg = await cfgRes.json();
           cachedWebConfig = {
             projectId: cfg.projectId || sa.project_id,
-            appId: cfg.appId || FALLBACK_WEB_CONFIG.appId,
-            apiKey: cfg.apiKey || FALLBACK_WEB_CONFIG.apiKey,
+            appId: cfg.appId || envConfig.appId,
+            apiKey: cfg.apiKey || envConfig.apiKey,
             authDomain: cfg.authDomain || `${sa.project_id}.firebaseapp.com`,
-            databaseURL: cfg.databaseURL || FALLBACK_WEB_CONFIG.databaseURL,
-            storageBucket: cfg.storageBucket || FALLBACK_WEB_CONFIG.storageBucket,
-            messagingSenderId: cfg.messagingSenderId || FALLBACK_WEB_CONFIG.messagingSenderId,
-            measurementId: cfg.measurementId || FALLBACK_WEB_CONFIG.measurementId,
+            databaseURL: cfg.databaseURL || envConfig.databaseURL,
+            storageBucket: cfg.storageBucket || envConfig.storageBucket,
+            messagingSenderId: cfg.messagingSenderId || envConfig.messagingSenderId,
+            measurementId: cfg.measurementId || envConfig.measurementId,
           };
           return cachedWebConfig;
         }
       }
     }
   } catch (err) {
-    console.warn('Falling back to default Firebase web config:', err.message);
+    console.warn('Falling back to .env Firebase web config:', err.message);
   }
 
-  cachedWebConfig = FALLBACK_WEB_CONFIG;
+  cachedWebConfig = envConfig;
   return cachedWebConfig;
 }
 
@@ -217,7 +242,7 @@ export async function getFirebaseWebConfig(hostname) {
 export function createFirebaseCustomToken(uid, additionalClaims = {}) {
   const sa = loadFirebaseServiceAccount();
   if (!sa) {
-    throw new Error('Firebase service account JSON not loaded');
+    throw new Error('Firebase service account credentials not configured in .env');
   }
   const now = Math.floor(Date.now() / 1000);
   const header = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).toString('base64url');

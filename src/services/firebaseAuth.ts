@@ -8,34 +8,31 @@ export interface AuthUser {
   lastLoginAt?: string;
 }
 
-const DEFAULT_FIREBASE_CONFIG = {
-  projectId: 'karma-fcf68',
-  appId: '1:281104290097:web:9d592b8b8b288fa4bd2010',
-  databaseURL: 'https://karma-fcf68-default-rtdb.firebaseio.com',
-  storageBucket: 'karma-fcf68.firebasestorage.app',
-  apiKey: 'AIzaSyCdNRMBSHzLlqmYwYJv2twiyjX5IBqG75A',
-  authDomain: 'karma-fcf68.firebaseapp.com',
-  messagingSenderId: '281104290097',
-  measurementId: 'G-90GN6XHFLQ',
-};
+let firebaseRuntimePromise: Promise<{ app: any; auth: any; mod: any; projectId?: string }> | null = null;
 
-let firebaseRuntimePromise: Promise<{ app: any; auth: any; mod: any }> | null = null;
+export async function fetchFirebaseWebConfig(): Promise<Record<string, string> | null> {
+  try {
+    const res = await fetch('/api/auth/firebase-config');
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.config?.apiKey) {
+        return data.config;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
 
 async function getFirebaseRuntime() {
   if (firebaseRuntimePromise) return firebaseRuntimePromise;
 
   firebaseRuntimePromise = (async () => {
-    let config = DEFAULT_FIREBASE_CONFIG;
-    try {
-      const res = await fetch('/api/auth/firebase-config');
-      if (res.ok) {
-        const data = await res.json();
-        if (data?.config?.apiKey) {
-          config = data.config;
-        }
-      }
-    } catch {
-      // use default config
+    const config = await fetchFirebaseWebConfig();
+    if (!config || !config.apiKey) {
+      firebaseRuntimePromise = null;
+      throw new Error('Firebase configuration not found on server (.env)');
     }
 
     const appUrl = 'https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js';
@@ -48,7 +45,7 @@ async function getFirebaseRuntime() {
     const app = existingApps.length > 0 ? existingApps[0] : appMod.initializeApp(config);
     const auth = authMod.getAuth(app);
 
-    return { app, auth, mod: authMod };
+    return { app, auth, mod: authMod, projectId: config.projectId };
   })();
 
   return firebaseRuntimePromise;

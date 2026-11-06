@@ -231,74 +231,213 @@ export function getGoogleStatus() {
 }
 
 /**
- * List primary calendar events from Google
+ * Format an ISO dateTime string in a target IANA timezone without UTC container drift
  */
-export async function getGoogleCalendarEvents(timeMin, timeMax) {
+function formatDateTimeInZone(isoString, timeZone) {
+  if (!isoString) return null;
+  try {
+    const d = new Date(isoString);
+    if (isNaN(d.getTime())) return null;
+    if (timeZone) {
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      }).formatToParts(d);
+      const map = {};
+      for (const p of parts) map[p.type] = p.value;
+      const hour = map.hour === '24' ? '00' : map.hour;
+      if (map.year && map.month && map.day && hour && map.minute) {
+        return {
+          date: `${map.year}-${map.month}-${map.day}`,
+          time: `${hour}:${map.minute}`,
+        };
+      }
+    }
+  } catch {
+    // Fall back to direct ISO parsing below
+  }
+
+  // Fallback: extract YYYY-MM-DD and HH:MM directly from the ISO string before any timezone conversion
+  const match = String(isoString).match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/);
+  if (match) {
+    return { date: match[1], time: match[2] };
+  }
+  return null;
+}
+
+/**
+ * Fetch all pages of events for a single Google Calendar ID within [min, max]
+ */
+async function fetchEventsForCalendar(token, calendarId, min, max, clientTimeZone) {
+  const items = [];
+  let pageToken = null;
+  let calTimeZone = null;
+  let pages = 0;
+
+  do {
+    const url = new URL(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`);
+    url.searchParams.set('timeMin', min);
+    url.searchParams.set('timeMax', max);
+    url.searchParams.set('singleEvents', 'true');
+    url.searchParams.set('orderBy', 'startTime');
+    url.searchParams.set('maxResults', '2500');
+    if (clientTimeZone) {
+      url.searchParams.set('timeZone', clientTimeZone);
+    }
+    if (pageToken) {
+      url.searchParams.set('pageToken', pageToken);
+    }
+
+    const res = await fetch(url.toString(), {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (!res.ok) {
+      if (calendarId === 'primary') {
+        const errorText = await res.text();
+        throw new Error(`Failed to fetch Google Calendar events: ${errorText}`);
+      }
+      break;
+    }
+
+    const data = await res.json();
+    if (data.timeZone && !calTimeZone) {
+      calTimeZone = data.timeZone;
+    }
+    if (Array.isArray(data.items)) {
+      items.push(...data.items);
+    }
+    pageToken = data.nextPageToken || null;
+    pages += 1;
+  } while (pageToken && pages < 5);
+
+  return { items, calTimeZone };
+}
+
+/**
+ * List calendar events across the user's primary and active Google Calendars
+ */
+export async function getGoogleCalendarEvents(timeMin, timeMax, clientTimeZone) {
   const token = await getValidAccessToken();
   if (!token) {
     throw new Error('Not connected to Google Calendar');
   }
 
-  const min = timeMin || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-  const max = timeMax || new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString();
+  const min = timeMin || new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString();
+  const max = timeMax || new Date(Date.now() + 120 * 24 * 60 * 60 * 1000).toISOString();
 
-  const url = new URL('https://www.googleapis.com/calendar/v3/calendars/primary/events');
-  url.searchParams.set('timeMin', min);
-  url.searchParams.set('timeMax', max);
-  url.searchParams.set('singleEvents', 'true');
-  url.searchParams.set('orderBy', 'startTime');
-  url.searchParams.set('maxResults', '150');
-
-  const res = await fetch(url.toString(), {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-
-  if (!res.ok) {
-    const errorText = await res.text();
-    throw new Error(`Failed to fetch Google Calendar events: ${errorText}`);
+  // Discover the user's calendars so events on secondary/selected calendars are included
+  let calendarsToQuery = [{ id: 'primary', summary: 'Primary', primary: true }];
+  try {
+    const listRes = await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (listRes.ok) {
+      const listData = await listRes.json();
+      const discovered = (listData.items || []).filter((cal) => {
+        if (!cal || !cal.id) return false;
+        if (cal.id.includes('#holiday@') || cal.id.includes('#sports@') || cal.id.includes('addressbook#contacts')) {
+          return false;
+        }
+        if (cal.accessRole === 'freeBusyReader') {
+          return false;
+        }
+        return Boolean(cal.primary || cal.selected || cal.accessRole === 'owner' || cal.accessRole === 'writer');
+      });
+      if (discovered.length > 0) {
+        calendarsToQuery = discovered;
+      }
+    }
+  } catch (err) {
+    console.warn('Could not list secondary Google calendars, falling back to primary:', err.message);
   }
 
-  const data = await res.json();
-  const items = data.items || [];
+  const results = await Promise.all(
+    calendarsToQuery.map((cal) =>
+      fetchEventsForCalendar(token, cal.id, min, max, clientTimeZone).catch((err) => {
+        console.warn(`Skipping calendar ${cal.id}:`, err.message);
+        return { items: [], calTimeZone: null };
+      })
+    )
+  );
 
-  return items.map((item) => {
-    // Determine start date/time
-    let date = '';
-    let startTime = '09:00';
-    let endTime = '10:00';
+  const mappedEvents = [];
+  const seenKeys = new Set();
 
-    if (item.start?.dateTime) {
-      const startD = new Date(item.start.dateTime);
-      date = startD.toISOString().split('T')[0];
-      startTime = startD.toTimeString().substring(0, 5);
-    } else if (item.start?.date) {
-      date = item.start.date;
-      startTime = '00:00';
+  for (const { items, calTimeZone } of results) {
+    for (const item of items) {
+      if (item.status === 'cancelled') continue;
+      // Skip unnamed free/busy blocks from shared calendars
+      if (!item.summary && item.visibility === 'private') continue;
+
+      const effectiveTz = clientTimeZone || item.start?.timeZone || calTimeZone || 'UTC';
+      const endTz = clientTimeZone || item.end?.timeZone || effectiveTz;
+
+      if (item.start?.dateTime) {
+        const startParsed = formatDateTimeInZone(item.start.dateTime, effectiveTz);
+        const endParsed = item.end?.dateTime
+          ? formatDateTimeInZone(item.end.dateTime, endTz)
+          : null;
+
+        const date = startParsed?.date || item.start.dateTime.slice(0, 10);
+        const startTime = startParsed?.time || '09:00';
+        const endTime = endParsed?.time || '10:00';
+
+        const dedupKey = `${item.iCalUID || item.id}_${date}_${startTime}`;
+        if (seenKeys.has(dedupKey)) continue;
+        seenKeys.add(dedupKey);
+
+        mappedEvents.push({
+          id: `gcal-${item.id}`,
+          googleEventId: item.id,
+          title: item.summary || '(No title)',
+          description: item.description || '',
+          date,
+          startTime,
+          endTime,
+          color: 'sky',
+          source: 'google',
+          completed: false,
+          projectId: null,
+          htmlLink: item.htmlLink,
+          createdAt: item.created || new Date().toISOString(),
+        });
+      } else if (item.start?.date) {
+        const date = item.start.date;
+        const dedupKey = `${item.iCalUID || item.id}_${date}_allday`;
+        if (seenKeys.has(dedupKey)) continue;
+        seenKeys.add(dedupKey);
+
+        mappedEvents.push({
+          id: `gcal-${item.id}`,
+          googleEventId: item.id,
+          title: item.summary || '(No title)',
+          description: item.description || '',
+          date,
+          startTime: '',
+          endTime: '',
+          color: 'sky',
+          source: 'google',
+          completed: false,
+          projectId: null,
+          htmlLink: item.htmlLink,
+          createdAt: item.created || new Date().toISOString(),
+        });
+      }
     }
+  }
 
-    if (item.end?.dateTime) {
-      const endD = new Date(item.end.dateTime);
-      endTime = endD.toTimeString().substring(0, 5);
-    } else if (item.end?.date) {
-      endTime = '23:59';
-    }
-
-    return {
-      id: `gcal-${item.id}`,
-      googleEventId: item.id,
-      title: item.summary || '(No title)',
-      description: item.description || '',
-      date,
-      startTime,
-      endTime,
-      color: 'google', // Distinct tint for Google
-      source: 'google',
-      completed: false,
-      projectId: null,
-      htmlLink: item.htmlLink,
-      createdAt: item.created || new Date().toISOString(),
-    };
+  mappedEvents.sort((a, b) => {
+    if (a.date !== b.date) return a.date.localeCompare(b.date);
+    return (a.startTime || '00:00').localeCompare(b.startTime || '00:00');
   });
+
+  return mappedEvents;
 }
 
 /**
