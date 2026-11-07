@@ -1258,7 +1258,7 @@ export interface ComposerProps {
   onSend?: (msg: string) => void;
 }
 
-export function Composer({ context = [], placeholder = 'Ask about this paper, or press @ to add context', model = 'gemma4 · local', busy, onSend }: ComposerProps) {
+export function Composer({ context = [], placeholder = 'Ask about this paper, or press @ to add context', model = 'qwen3.5:researcher', busy, onSend }: ComposerProps) {
   const [v, setV] = useState('');
   const handleSend = () => {
     if (v.trim() && onSend && !busy) {
