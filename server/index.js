@@ -94,6 +94,9 @@ async function resolveFallbackOllamaModel(baseUrl) {
 }
 
 app.post('/api/ollama', async (req, res) => {
+  req.setTimeout(300000);
+  res.setTimeout(300000);
+
   const candidates = getOllamaCandidateBaseUrls();
   const payload = req.body && typeof req.body === 'object' ? { ...req.body } : {};
   if (process.env.OLLAMA_MODEL && (!payload.model || payload.model === 'qwen3.5:researcher')) {
@@ -120,7 +123,7 @@ app.post('/api/ollama', async (req, res) => {
                 'Content-Type': 'application/json',
                 'Content-Length': Buffer.byteLength(bodyStr),
               },
-              timeout: 8000,
+              timeout: 300000,
             },
             (proxyRes) => {
               resolve({ proxyReq, proxyRes });
@@ -128,14 +131,14 @@ app.post('/api/ollama', async (req, res) => {
           );
 
           proxyReq.on('timeout', () => {
-            proxyReq.destroy(new Error(`Connection timeout to ${baseUrl}`));
+            proxyReq.destroy(new Error(`Timeout waiting for Ollama response from ${baseUrl}`));
           });
           proxyReq.on('error', (err) => reject(err));
           proxyReq.write(bodyStr);
           proxyReq.end();
         });
 
-      let { proxyRes } = await attemptRequest(payload);
+      let { proxyReq, proxyRes } = await attemptRequest(payload);
 
       // If the requested model isn't found on this Ollama instance, auto-discover an available model
       if (proxyRes.statusCode === 404) {
@@ -144,15 +147,26 @@ app.post('/api/ollama', async (req, res) => {
         if (fallbackModel && fallbackModel !== payload.model) {
           console.log(`[Ollama Proxy] Model '${payload.model}' not found on ${baseUrl}; using '${fallbackModel}'`);
           const retry = await attemptRequest({ ...payload, model: fallbackModel });
+          proxyReq = retry.proxyReq;
           proxyRes = retry.proxyRes;
         }
       }
 
       res.writeHead(proxyRes.statusCode || 200, {
         'Content-Type': proxyRes.headers['content-type'] || 'application/x-ndjson',
-        'Cache-Control': 'no-cache',
+        'Cache-Control': 'no-cache, no-transform',
         Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no',
       });
+      res.flushHeaders?.();
+      res.socket?.setNoDelay?.(true);
+
+      req.on('close', () => {
+        if (!res.writableEnded) {
+          proxyReq.destroy();
+        }
+      });
+
       proxyRes.pipe(res);
       return;
     } catch (err) {

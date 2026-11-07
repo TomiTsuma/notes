@@ -485,31 +485,10 @@ const MindMapView: React.FC = () => {
   const handleCanvasPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if ((e.target as HTMLElement).closest('[data-mm-ui]')) return;
     const nodeEl = (e.target as HTMLElement).closest('[data-mm-node-id]') as HTMLElement | null;
-    const portEl = (e.target as HTMLElement).closest('[data-mm-port-node]') as HTMLElement | null;
     const resizeEl = (e.target as HTMLElement).closest('[data-mm-resize-dir]') as HTMLElement | null;
+    const portEl = (e.target as HTMLElement).closest('[data-mm-port-node]') as HTMLElement | null;
 
-    // 1. Port drag to connect ideas
-    if (portEl) {
-      e.stopPropagation();
-      e.preventDefault();
-      const fromId = portEl.getAttribute('data-mm-port-node')!;
-      const w = clientToWorld(e.clientX, e.clientY);
-      setConnectingFromId(fromId);
-      setConnectCursorWorld(w);
-      interactionRef.current = {
-        mode: 'connect-drag',
-        pointerId: e.pointerId,
-        startClientX: e.clientX,
-        startClientY: e.clientY,
-        startPanX: pan.x,
-        startPanY: pan.y,
-        nodeId: fromId,
-      };
-      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-      return;
-    }
-
-    // 1b. Drag-to-stretch (resize) a Mind Map node from any edge or corner
+    // 1. Drag-to-stretch (resize) a Mind Map node from any edge (n, s, e, w) or diagonal corner (nw, ne, sw, se)
     if (resizeEl && nodeEl) {
       e.stopPropagation();
       e.preventDefault();
@@ -554,6 +533,27 @@ const MindMapView: React.FC = () => {
         };
         (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
       }
+      return;
+    }
+
+    // 1b. Port drag to connect ideas
+    if (portEl) {
+      e.stopPropagation();
+      e.preventDefault();
+      const fromId = portEl.getAttribute('data-mm-port-node')!;
+      const w = clientToWorld(e.clientX, e.clientY);
+      setConnectingFromId(fromId);
+      setConnectCursorWorld(w);
+      interactionRef.current = {
+        mode: 'connect-drag',
+        pointerId: e.pointerId,
+        startClientX: e.clientX,
+        startClientY: e.clientY,
+        startPanX: pan.x,
+        startPanY: pan.y,
+        nodeId: fromId,
+      };
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
       return;
     }
 
@@ -703,8 +703,8 @@ const MindMapView: React.FC = () => {
       const z = zoomRef.current || 1;
       const dx = (e.clientX - state.startClientX) / z;
       const dy = (e.clientY - state.startClientY) / z;
-      const MIN_W = 160;
-      const MIN_H = 115;
+      const MIN_W = 140;
+      const MIN_H = 95;
 
       let nextX = state.startNodeX;
       let nextY = state.startNodeY;
@@ -1710,7 +1710,8 @@ const MindMapView: React.FC = () => {
                   top: node.y,
                   width: w,
                   height: h ? h : undefined,
-                  minHeight: node.type === 'sticky' ? 140 : 120,
+                  minHeight: 95,
+                  boxSizing: 'border-box',
                   backgroundColor: tone.bg,
                   border: `2px solid ${isSelected || isConnectSource ? tone.accent : tone.border}`,
                   borderRadius: node.type === 'sticky' ? '4px 4px 16px 4px' : 14,
@@ -1833,7 +1834,7 @@ const MindMapView: React.FC = () => {
                     value={node.content}
                     onChange={(ev) => handleUpdateNode(node.id, { content: ev.target.value })}
                     placeholder="Write notes, bullet points, or hypotheses…"
-                    rows={node.type === 'sticky' ? 4 : 3}
+                    rows={1}
                     style={{
                       border: 'none',
                       background: 'transparent',
@@ -1844,7 +1845,7 @@ const MindMapView: React.FC = () => {
                       resize: 'none',
                       width: '100%',
                       flex: 1,
-                      minHeight: node.type === 'sticky' ? 68 : 52,
+                      minHeight: 32,
                       fontFamily: 'var(--font-sans)',
                     }}
                   />
@@ -2095,161 +2096,206 @@ const MindMapView: React.FC = () => {
                 </div>
 
                 {/* 8-Direction Drag-to-Stretch (Resize) Edge & Corner Handles */}
-                {/* Top & Bottom Edge Stretch Zones */}
+                {/* Top (N) & Bottom (S) Edge Stretch Zones */}
                 <div
                   data-mm-resize-dir="n"
-                  title="Drag to stretch height"
+                  title="Drag top edge to stretch height"
                   style={{
                     position: 'absolute',
-                    top: -5,
+                    top: -8,
                     left: 14,
                     right: 14,
-                    height: 9,
+                    height: 14,
                     cursor: 'ns-resize',
-                    zIndex: 2,
+                    zIndex: 8,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
                   }}
-                />
+                >
+                  <div
+                    style={{
+                      width: 28,
+                      height: 5,
+                      borderRadius: 999,
+                      backgroundColor: isSelected ? tone.accent : 'rgba(100,116,139,0.35)',
+                      border: '1px solid #ffffff',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.12)',
+                      opacity: isSelected ? 1 : 0.7,
+                    }}
+                  />
+                </div>
                 <div
                   data-mm-resize-dir="s"
-                  title="Drag to stretch height"
+                  title="Drag bottom edge to stretch height"
                   style={{
                     position: 'absolute',
-                    bottom: -5,
+                    bottom: -8,
                     left: 14,
                     right: 14,
-                    height: 9,
+                    height: 14,
                     cursor: 'ns-resize',
-                    zIndex: 2,
+                    zIndex: 8,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
                   }}
-                />
-                {/* Left & Right Edge Stretch Zones */}
+                >
+                  <div
+                    style={{
+                      width: 28,
+                      height: 5,
+                      borderRadius: 999,
+                      backgroundColor: isSelected ? tone.accent : 'rgba(100,116,139,0.35)',
+                      border: '1px solid #ffffff',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.12)',
+                      opacity: isSelected ? 1 : 0.7,
+                    }}
+                  />
+                </div>
+                {/* Left (W) & Right (E) Edge Stretch Zones */}
                 <div
                   data-mm-resize-dir="w"
-                  title="Drag to stretch width"
+                  title="Drag left edge to stretch width"
                   style={{
                     position: 'absolute',
                     top: 14,
                     bottom: 14,
-                    left: -5,
-                    width: 9,
+                    left: -8,
+                    width: 14,
                     cursor: 'ew-resize',
-                    zIndex: 2,
+                    zIndex: 8,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
                   }}
-                />
+                >
+                  <div
+                    style={{
+                      width: 5,
+                      height: 28,
+                      borderRadius: 999,
+                      backgroundColor: isSelected ? tone.accent : 'rgba(100,116,139,0.35)',
+                      border: '1px solid #ffffff',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.12)',
+                      opacity: isSelected ? 1 : 0.7,
+                    }}
+                  />
+                </div>
                 <div
                   data-mm-resize-dir="e"
-                  title="Drag to stretch width"
+                  title="Drag right edge to stretch width"
                   style={{
                     position: 'absolute',
                     top: 14,
                     bottom: 14,
-                    right: -5,
-                    width: 9,
+                    right: -8,
+                    width: 14,
                     cursor: 'ew-resize',
-                    zIndex: 2,
+                    zIndex: 8,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
                   }}
-                />
-                {/* 4 Corner Stretch Handles (NW, NE, SW, SE) */}
+                >
+                  <div
+                    style={{
+                      width: 5,
+                      height: 28,
+                      borderRadius: 999,
+                      backgroundColor: isSelected ? tone.accent : 'rgba(100,116,139,0.35)',
+                      border: '1px solid #ffffff',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.12)',
+                      opacity: isSelected ? 1 : 0.7,
+                    }}
+                  />
+                </div>
+                {/* 4 Diagonal Corner Stretch Handles (NW, NE, SW, SE) */}
                 {(['nw', 'ne', 'sw', 'se'] as const).map((corner) => {
                   const posStyle: React.CSSProperties =
                     corner === 'nw'
-                      ? { top: -6, left: -6, cursor: 'nwse-resize' }
+                      ? { top: -9, left: -9, cursor: 'nwse-resize' }
                       : corner === 'ne'
-                      ? { top: -6, right: -6, cursor: 'nesw-resize' }
+                      ? { top: -9, right: -9, cursor: 'nesw-resize' }
                       : corner === 'sw'
-                      ? { bottom: -6, left: -6, cursor: 'nesw-resize' }
-                      : { bottom: -6, right: -6, cursor: 'nwse-resize' };
+                      ? { bottom: -9, left: -9, cursor: 'nesw-resize' }
+                      : { bottom: -9, right: -9, cursor: 'nwse-resize' };
 
                   return (
                     <div
                       key={corner}
                       data-mm-resize-dir={corner}
-                      title="Drag corner to stretch node"
-                      style={{
-                        position: 'absolute',
-                        ...posStyle,
-                        width: 14,
-                        height: 14,
-                        zIndex: 4,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
-                    >
-                      {isSelected ? (
-                        <div
-                          style={{
-                            width: 9,
-                            height: 9,
-                            borderRadius: 2.5,
-                            backgroundColor: '#ffffff',
-                            border: `2px solid ${tone.accent}`,
-                            boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
-                          }}
-                        />
-                      ) : corner === 'se' ? (
-                        <svg
-                          width="10"
-                          height="10"
-                          viewBox="0 0 10 10"
-                          style={{ position: 'absolute', right: 7, bottom: 7, opacity: 0.45, pointerEvents: 'none' }}
-                        >
-                          <path
-                            d="M 9 2 L 2 9 M 9 6 L 6 9"
-                            stroke={tone.accent}
-                            strokeWidth="1.5"
-                            strokeLinecap="round"
-                          />
-                        </svg>
-                      ) : null}
-                    </div>
-                  );
-                })}
-
-                {/* 4 Connection / Sprout Handles (Top, Right, Bottom, Left) */}
-                {(['top', 'right', 'bottom', 'left'] as const).map((side) => {
-                  const posStyle: React.CSSProperties =
-                    side === 'top'
-                      ? { top: -10, left: '50%', transform: 'translateX(-50%)' }
-                      : side === 'bottom'
-                      ? { bottom: -10, left: '50%', transform: 'translateX(-50%)' }
-                      : side === 'left'
-                      ? { left: -10, top: '50%', transform: 'translateY(-50%)' }
-                      : { right: -10, top: '50%', transform: 'translateY(-50%)' };
-
-                  return (
-                    <div
-                      key={side}
-                      data-mm-port-node={node.id}
-                      onDoubleClick={(ev) => {
-                        ev.stopPropagation();
-                        handleSproutChild(node, side);
-                      }}
-                      title="Drag to connect to another node, or double-click to sprout a connected idea"
+                      title="Drag corner to stretch diagonally"
                       style={{
                         position: 'absolute',
                         ...posStyle,
                         width: 18,
                         height: 18,
-                        borderRadius: '50%',
-                        backgroundColor: '#ffffff',
-                        border: `2px solid ${tone.accent}`,
-                        color: tone.accent,
+                        zIndex: 9,
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        fontSize: 11,
-                        fontWeight: 800,
-                        cursor: 'crosshair',
-                        opacity: isSelected || tool === 'connect' ? 1 : 0.65,
-                        boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
-                        zIndex: 5,
                       }}
                     >
-                      +
+                      <div
+                        style={{
+                          width: isSelected ? 10 : 8,
+                          height: isSelected ? 10 : 8,
+                          borderRadius: 3,
+                          backgroundColor: '#ffffff',
+                          border: `2px solid ${tone.accent}`,
+                          boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                          opacity: isSelected ? 1 : 0.75,
+                        }}
+                      />
                     </div>
                   );
                 })}
+
+                {/* Connection / Sprout Handles (shown when Connect tool is active, or offset so they never block edge stretching) */}
+                {tool === 'connect' &&
+                  (['top', 'right', 'bottom', 'left'] as const).map((side) => {
+                    const posStyle: React.CSSProperties =
+                      side === 'top'
+                        ? { top: -24, left: '50%', transform: 'translateX(-50%)' }
+                        : side === 'bottom'
+                        ? { bottom: -24, left: '50%', transform: 'translateX(-50%)' }
+                        : side === 'left'
+                        ? { left: -24, top: '50%', transform: 'translateY(-50%)' }
+                        : { right: -24, top: '50%', transform: 'translateY(-50%)' };
+
+                    return (
+                      <div
+                        key={side}
+                        data-mm-port-node={node.id}
+                        onDoubleClick={(ev) => {
+                          ev.stopPropagation();
+                          handleSproutChild(node, side);
+                        }}
+                        title="Drag to connect to another node, or double-click to sprout a connected idea"
+                        style={{
+                          position: 'absolute',
+                          ...posStyle,
+                          width: 20,
+                          height: 20,
+                          borderRadius: '50%',
+                          backgroundColor: '#ffffff',
+                          border: `2px solid ${tone.accent}`,
+                          color: tone.accent,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: 12,
+                          fontWeight: 800,
+                          cursor: 'crosshair',
+                          boxShadow: '0 2px 6px rgba(0,0,0,0.18)',
+                          zIndex: 11,
+                        }}
+                      >
+                        +
+                      </div>
+                    );
+                  })}
               </div>
             );
           })}

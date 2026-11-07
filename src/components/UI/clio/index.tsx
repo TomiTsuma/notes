@@ -1462,9 +1462,30 @@ export interface AIPanelProps {
 
 export function AIPanel({ tab = 'chat', file, children, footer, onClose, onClear, onSend, busy }: AIPanelProps) {
   const [t, setT] = useState(tab);
+  const [panelWidth, setPanelWidth] = useState<number>(390);
+
+  const handleResizePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = panelWidth;
+    const target = e.currentTarget;
+    target.setPointerCapture(e.pointerId);
+
+    const onMove = (ev: PointerEvent) => {
+      const delta = startX - ev.clientX;
+      setPanelWidth(Math.max(320, Math.min(760, startWidth + delta)));
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  };
+
   return (
-    <aside className="cl-ai" aria-label="Clio AI">
-      <div className="cl-ai-resize" aria-hidden="true" />
+    <aside className="cl-ai" aria-label="Clio AI" style={{ width: panelWidth }}>
+      <div className="cl-ai-resize" aria-hidden="true" onPointerDown={handleResizePointerDown} title="Drag to resize Ask Chlio panel" />
       <div className="cl-ai-head">
         <span className="cl-ai-title">
           <Icon name="spark" size={17} className="spark" />

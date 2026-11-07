@@ -530,6 +530,7 @@ const MermaidBlock: React.FC<{ code: string }> = ({ code }) => {
         border: '1px solid var(--line)',
         boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
         overflowX: 'auto',
+        overflowY: 'hidden',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
@@ -582,7 +583,7 @@ function renderMathString(latex: string, displayMode: boolean): React.ReactNode 
     });
     return (
       <span
-        style={displayMode ? { display: 'block', margin: '10px 0', overflowX: 'auto', textAlign: 'center' } : undefined}
+        style={displayMode ? { display: 'block', margin: '10px 0', overflowX: 'auto', overflowY: 'hidden', textAlign: 'center' } : undefined}
         dangerouslySetInnerHTML={{ __html: html }}
       />
     );
@@ -783,6 +784,7 @@ export const RichMarkdown: React.FC<{ children: React.ReactNode; streaming?: boo
             style={{
               margin: '12px 0',
               overflowX: 'auto',
+              overflowY: 'hidden',
               borderRadius: 8,
               border: '1px solid var(--line)',
               background: 'var(--surface-raised, #fff)',
@@ -924,6 +926,7 @@ export const RichMarkdown: React.FC<{ children: React.ReactNode; streaming?: boo
     <div className="md">
       {thinkContent && (
         <details
+          open={Boolean(streaming && elements.length === 0)}
           style={{
             marginBottom: 10,
             padding: '6px 10px',
@@ -934,7 +937,9 @@ export const RichMarkdown: React.FC<{ children: React.ReactNode; streaming?: boo
             color: 'var(--ink-3)',
           }}
         >
-          <summary style={{ cursor: 'pointer', fontWeight: 600 }}>Reasoning process</summary>
+          <summary style={{ cursor: 'pointer', fontWeight: 600 }}>
+            {streaming && elements.length === 0 ? 'Thinking…' : 'Reasoning process'}
+          </summary>
           <div style={{ marginTop: 6, whiteSpace: 'pre-wrap' }}>{thinkContent}</div>
         </details>
       )}
@@ -943,3 +948,4 @@ export const RichMarkdown: React.FC<{ children: React.ReactNode; streaming?: boo
     </div>
   );
 };
+
