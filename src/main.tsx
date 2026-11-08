@@ -9,7 +9,7 @@ if (favicon) {
   favicon.href = logoUrl
 }
 
-document.title = 'Clio'
+document.title = 'Chlio'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

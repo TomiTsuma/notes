@@ -458,8 +458,8 @@ export function Sidebar({
   activeFileId,
   user = { name: 'User', email: 'user@example.com' },
   sync = 'connected',
-  logoLight = '/assets/Logos/clio-wordmark-ink.png',
-  logoDark = '/assets/Logos/clio-wordmark-paper.png',
+  logoLight = '/assets/Logos/chlio-new-logo.png',
+  logoDark = '/assets/Logos/chlio-new-logo.png',
   onNavigate,
   counts = {},
   onToggleSidebar,
@@ -480,12 +480,13 @@ export function Sidebar({
     <aside className="cl-sidebar" aria-label="Sidebar">
       <div className="cl-sb-brand">
         {logoLight ? (
-          <span>
-            <img className="cl-sb-logo-light" src={logoLight} alt="Clio" style={{ height: 22 }} />
-            <img className="cl-sb-logo-dark" src={logoDark || logoLight} alt="Clio" style={{ height: 22 }} />
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+            <img className="cl-sb-logo-light" src={logoLight} alt="Chlio" style={{ height: 30, width: 30, objectFit: 'contain' }} />
+            <img className="cl-sb-logo-dark" src={logoDark || logoLight} alt="Chlio" style={{ height: 30, width: 30, objectFit: 'contain' }} />
+            <b style={{ fontSize: 19, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--ink)' }}>Chlio</b>
           </span>
         ) : (
-          <b style={{ fontSize: 20 }}>Clio</b>
+          <b style={{ fontSize: 20 }}>Chlio</b>
         )}
         <IconButton icon="panel-left" label="Collapse sidebar" onClick={onToggleSidebar} />
       </div>

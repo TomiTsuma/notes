@@ -121,7 +121,7 @@ body { background: var(--surface); color: var(--ink); font-family: var(--font-sa
 
 .cl-sidebar { width: var(--sidebar-width); flex: none; background: var(--surface-sidebar); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
 .cl-sb-brand { display: flex; align-items: center; justify-content: space-between; padding: 18px 16px 10px 20px; }
-.cl-sb-brand img { height: 22px; display: block; }
+.cl-sb-brand img { height: 30px; width: 30px; object-fit: contain; display: block; }
 .cl-sb-logo-dark { display: none !important; }
 [data-theme="dark"] .cl-sb-logo-light { display: none !important; }
 [data-theme="dark"] .cl-sb-logo-dark { display: block !important; }
