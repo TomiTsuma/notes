@@ -41,6 +41,7 @@ function App() {
     nextcloudStatus,
     addFolder,
     addFile,
+    addNotebook,
     nextcloudSyncPath,
     updateFile,
     splitViewMode,
@@ -137,7 +138,9 @@ function App() {
 
   const fileTree = buildFolderTree(null);
 
-  const activeDoc = files.find((f) => f.id === activeDocumentId);
+  const activeDoc = files.find(
+    (f) => f.id === activeDocumentId || (f.type === 'notebook' && (f.notebookPageIds || []).includes(activeDocumentId || ''))
+  );
 
   const getCrumbs = () => {
     switch (activeView) {
@@ -155,7 +158,10 @@ function App() {
         return ['Workspace', 'Mind Map'];
       case 'canvas':
       default:
-        return ['Papers', activeDoc ? activeDoc.name : 'Note Canvas'];
+        return [
+          activeDoc?.type === 'notebook' ? 'Notebooks' : 'Papers',
+          activeDoc ? activeDoc.name.replace(/\.notebook$/i, '') : 'Note Canvas',
+        ];
     }
   };
 
@@ -207,6 +213,13 @@ function App() {
             )}
           </div>
         );
+    }
+  };
+
+  const handleNewNotebook = () => {
+    const name = prompt('Notebook name:', 'Research Notes');
+    if (name && name.trim()) {
+      addNotebook(name.trim());
     }
   };
 
@@ -302,7 +315,7 @@ function App() {
             projects={projects.map((p) => ({ id: p.id, name: p.name, color: p.color }))}
             tree={fileTree}
             tags={tags.map((t) => ({ name: t.name, color: t.color }))}
-            activeFileId={activeDocumentId || undefined}
+            activeFileId={activeDoc?.id || activeDocumentId || undefined}
             user={{
               name: authUser?.name || import.meta.env.VITE_USER_NAME || 'User',
               email: authUser?.email || import.meta.env.VITE_USER_EMAIL || 'user@example.com',
@@ -310,10 +323,31 @@ function App() {
             sync={nextcloudConnected ? 'connected' : nextcloudStatus === 'connecting' ? 'connecting' : 'idle'}
             onNavigate={(v) => setActiveView(v as any)}
             onToggleSidebar={() => setShowSidebar(false)}
+            onNewNotebook={handleNewNotebook}
             onNewFolder={handleNewFolder}
             onUploadFile={handleUploadFile}
             onSelectFile={(id) => {
-              setActiveDocument(id);
+              const target = files.find((f) => f.id === id);
+              if (target?.type === 'notebook') {
+                if (target.notebookPageIds && target.notebookPageIds.length > 0) {
+                  setActiveDocument(target.notebookPageIds[0]);
+                } else {
+                  const pageIds = Array.from({ length: 3 }, (_, i) => `${target.id}-pg-${i + 1}`);
+                  updateFile(target.id, {
+                    notebookPageIds: pageIds,
+                    notebookMeta: target.notebookMeta || {
+                      pageWidth: 800,
+                      pageHeight: 1130,
+                      lineSpacing: 32,
+                      lineColor: '#d4d4d8',
+                      marginColor: '#ffcccc',
+                    },
+                  });
+                  setActiveDocument(pageIds[0]);
+                }
+              } else {
+                setActiveDocument(id);
+              }
               setActiveView('canvas');
             }}
             onUserClick={() => setShowAuthModal(true)}

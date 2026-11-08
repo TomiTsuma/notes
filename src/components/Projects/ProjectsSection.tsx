@@ -42,7 +42,7 @@ const ProjectsSection: React.FC = () => {
     addProject,
     mergeJiraProjects,
     mergeJiraTasks,
-    addFile,
+    addNotebook,
     setActiveDocument,
     setActiveView,
   } = useAppStore();
@@ -154,18 +154,9 @@ const ProjectsSection: React.FC = () => {
 
   const handleCreateNote = () => {
     if (!selectedProj) return;
-    const name = prompt('Note title:');
-    if (!name) return;
-    const newFile = {
-      id: 'file-' + Date.now(),
-      name,
-      type: 'notebook',
-      folderId: null,
-      projectId: selectedProj.id,
-    };
-    addFile(newFile);
-    setActiveDocument(newFile.id);
-    setActiveView('canvas');
+    const name = prompt('Notebook title:', `${selectedProj.name} Notes`);
+    if (!name || !name.trim()) return;
+    addNotebook(name.trim(), selectedProj.id);
   };
 
   const filteredProjects = projects.filter((p) => {

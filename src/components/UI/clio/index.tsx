@@ -444,6 +444,7 @@ export interface SidebarProps {
   onNavigate?: (view: string) => void;
   counts?: Record<string, number>;
   onToggleSidebar?: () => void;
+  onNewNotebook?: () => void;
   onNewFolder?: () => void;
   onUploadFile?: () => void;
   onSelectFile?: (id: string) => void;
@@ -463,6 +464,7 @@ export function Sidebar({
   onNavigate,
   counts = {},
   onToggleSidebar,
+  onNewNotebook,
   onNewFolder,
   onUploadFile,
   onSelectFile,
@@ -520,10 +522,11 @@ export function Sidebar({
             ))}
           </NavSection>
         )}
-        {(tree.length > 0 || onUploadFile || onNewFolder) && (
+        {(tree.length > 0 || onNewNotebook || onUploadFile || onNewFolder) && (
           <NavSection
             title="Notebooks"
             actions={[
+              { icon: 'plus', label: 'New notebook', onClick: onNewNotebook },
               { icon: 'upload', label: 'Upload PDF', onClick: onUploadFile },
               { icon: 'folder-plus', label: 'New folder', onClick: onNewFolder },
             ]}

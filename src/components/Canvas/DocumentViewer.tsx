@@ -44,6 +44,8 @@ const DocumentViewer: React.FC = () => {
     setTargetPdfPage,
     triggerExportPdf,
     annotations,
+    addNotebook,
+    setActiveDocument,
   } = useAppStore();
   const [numPages, setNumPages] = useState<number | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -566,24 +568,16 @@ const DocumentViewer: React.FC = () => {
     return pairs;
   }, [numPages]);
 
-  const isNotebook = file?.type === 'notebook' || (!file && files.some((f) => f.type === 'notebook'));
-  if (isNotebook) {
-    return (
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-        <div style={{ display: 'flex', alignItems: 'center', padding: '8px 16px', borderBottom: '1px solid var(--line)', background: 'var(--surface)' }}>
-          <Tag tone="sky">#notebook</Tag>
-        </div>
-        <NotebookViewer />
-      </div>
+  const isNotebook =
+    file?.type === 'notebook' ||
+    files.some(
+      (f) =>
+        f.type === 'notebook' &&
+        (f.id === activeDocumentId || (f.notebookPageIds || []).includes(activeDocumentId || ''))
     );
-  }
 
-  if (!file) {
-    return (
-      <div style={{ padding: 40, textAlign: 'center', color: 'var(--ink-2)', fontFamily: 'var(--font-sans)' }}>
-        No document selected. Select a file from the sidebar or Project Hub.
-      </div>
-    );
+  if (isNotebook || !file) {
+    return <NotebookViewer />;
   }
 
   if (file.type === 'txt') {
@@ -656,8 +650,39 @@ const DocumentViewer: React.FC = () => {
           zIndex: 30,
         }}
       >
-        {/* Left: Tags */}
+        {/* Left: Notebook Switcher + Tags */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          <button
+            onClick={() => {
+              const existingNb = files.find((f) => f.type === 'notebook');
+              if (existingNb) {
+                const firstPage = existingNb.notebookPageIds?.[0] || existingNb.id;
+                setActiveDocument(firstPage);
+              } else {
+                const name = prompt('New notebook title:', 'Research Notes');
+                if (name && name.trim()) {
+                  addNotebook(name.trim());
+                }
+              }
+            }}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 5,
+              height: 26,
+              padding: '0 10px',
+              borderRadius: 'var(--radius-xs)',
+              border: '1px solid var(--line-strong)',
+              fontSize: 12,
+              fontWeight: 600,
+              color: 'var(--ink)',
+              background: 'var(--surface-raised)',
+              cursor: 'pointer',
+            }}
+            title="Switch to standalone lined Notebook (without PDF)"
+          >
+            📓 {files.some((f) => f.type === 'notebook') ? 'Open Notebook' : '+ New Notebook'}
+          </button>
           {currentFileTags.map((t) => (
             <Tag key={t.name} tone={t.color} onRemove={() => handleRemoveTag(t.name)}>
               #{t.name}

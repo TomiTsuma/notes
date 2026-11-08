@@ -43,7 +43,7 @@ const HomeDashboard: React.FC = () => {
     setActiveDocument,
     setSelectedProjectId,
     addProject,
-    addFile,
+    addNotebook,
     addCalendarEvent,
     updateCalendarEvent,
     addKanbanTask,
@@ -126,17 +126,9 @@ const HomeDashboard: React.FC = () => {
   };
 
   const handleCreateNote = () => {
-    const name = prompt('Note title:');
-    if (!name) return;
-    const newFile = {
-      id: 'file-' + Date.now(),
-      name,
-      type: 'notebook' as const,
-      folderId: null,
-    };
-    addFile(newFile);
-    setActiveDocument(newFile.id);
-    setActiveView('canvas');
+    const name = prompt('Notebook title:', 'Research Notes');
+    if (!name || !name.trim()) return;
+    addNotebook(name.trim());
   };
 
   const handleAddCalendarTask = () => {

@@ -104,7 +104,7 @@ const TextLayer: React.FC<{
         zIndex: 20,
       }}
     >
-      {textElements.map(el => (
+      {textElements.filter(el => !el.id.endsWith('-lined-notes')).map(el => (
         <div 
           key={el.id}
           className="text-element"
