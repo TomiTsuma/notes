@@ -96,3 +96,19 @@ If you want to publish to Docker Hub, tag and push the image:
 docker tag clio-app your-dockerhub-username/clio:latest
 docker push your-dockerhub-username/clio:latest
 ```
+
+## Authentication
+
+Every `/api` route requires a signed-in browser session or an access token (see
+`server/auth.js` and `docs/changelog/*_auth_gate_changelog.md`). Only the static app, `GET /api/health`,
+the sign-in routes and the secret-keyed calendar feed are public.
+
+- **Browser:** "Continue with Google" (server-side OAuth code flow with PKCE, a full-page redirect so it
+  works on iPad). Only emails in `CHLIO_ALLOWED_EMAILS` get in. The session is an HttpOnly cookie.
+- **Machines (Claude Desktop, Open WebUI, scripts):** create a token in **Account → Access tokens**, or on the host:
+  `docker exec clio-app node server/cli.js token create <name> [--scope read|write] [--days N]`.
+  Use it as `Authorization: Bearer chlio_pat_...`. Tokens are shown once, stored hashed, and can be revoked.
+- **Required `.env`:** `CHLIO_ALLOWED_EMAILS`, `CHLIO_PUBLIC_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`.
+  Register `https://<your host>/api/auth/login/google/callback` as an authorized redirect URI on the Google client.
+- **Tests:** `cd server && npm install && npm test` (needs `better-sqlite3`; run it in the node:20 image).
+- **Locked out?** Anyone who can `docker exec` on the host can mint a token with the CLI above.

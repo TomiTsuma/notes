@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
+import { initSchema } from './schema.js';
 
 const DATA_DIR = process.env.CLIO_DATA_DIR || path.join(process.cwd(), 'data');
 const DB_PATH = path.join(DATA_DIR, 'clio.db');
@@ -11,22 +12,7 @@ fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS app_state (
-    id INTEGER PRIMARY KEY CHECK (id = 1),
-    payload TEXT NOT NULL DEFAULT '{}',
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-
-  CREATE TABLE IF NOT EXISTS file_blobs (
-    file_id TEXT PRIMARY KEY,
-    mime_type TEXT,
-    storage_path TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-
-  INSERT OR IGNORE INTO app_state (id, payload) VALUES (1, '{}');
-`);
+initSchema(db);
 
 export { db, DATA_DIR, UPLOADS_DIR, DB_PATH };
 

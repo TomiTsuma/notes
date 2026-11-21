@@ -19,7 +19,6 @@ import MindMapView from './components/MindMap/MindMapView';
 import ToolPalette from './components/UI/ToolPalette';
 import GoogleAuthModal from './components/Auth/GoogleAuthModal';
 import CommandPalette from './components/Modals/CommandPalette';
-import { fetchCurrentAuthUser } from './services/firebaseAuth';
 
 function App() {
   const {
@@ -46,7 +45,6 @@ function App() {
     updateFile,
     splitViewMode,
     authUser,
-    setAuthUser,
     requestExportPdf,
   } = useAppStore();
 
@@ -61,17 +59,14 @@ function App() {
   const transitionRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pdfInputRef = useRef<HTMLInputElement>(null);
 
-  // Keep sidebar visible by default on launch and handle Google OAuth redirect + Firebase Auth session
+  // Keep sidebar visible by default on launch and handle the Google Calendar OAuth redirect
   useEffect(() => {
     setShowSidebar(true);
     const params = new URLSearchParams(window.location.search);
     if (params.get('code') || params.get('google_connected')) {
       setActiveView('calendar');
     }
-    fetchCurrentAuthUser().then((u) => {
-      if (u) setAuthUser(u);
-    });
-  }, [setActiveView, setAuthUser]);
+  }, [setActiveView]);
 
   // Global Cmd+K / Ctrl+K shortcut for Command Palette
   useEffect(() => {

@@ -8,13 +8,13 @@ dotenv.config({ path: path.resolve(__dirname, '../.env') });
 dotenv.config();
 
 import express from 'express';
-import cors from 'cors';
 import multer from 'multer';
 import fs from 'fs';
 import http from 'http';
 import https from 'https';
 import { getBootstrap, putBootstrap, getFileContent, saveFileContent } from './bootstrap.js';
-import { deleteFileBlob } from './db.js';
+import { db, deleteFileBlob } from './db.js';
+import { createAuth, createGoogleClient, parseAllowedEmails } from './auth.js';
 import {
   getJiraConfig,
   saveJiraConfig,
@@ -36,26 +36,58 @@ import {
   deleteGoogleCalendarEvent,
 } from './googleCalendar.js';
 import { generateIcsFeed, parseIcsContent } from './icsService.js';
-import {
-  getFirebaseWebConfig,
-  verifyFirebaseIdToken,
-  createFirebaseCustomToken,
-  getSavedAuthSession,
-  saveAuthSession,
-  clearAuthSession,
-} from './firebaseAuth.js';
 
 const PORT = parseInt(process.env.PORT || '4191', 10);
 const DIST_DIR = process.env.CLIO_DIST_DIR || path.join(__dirname, '..', 'dist');
+const PUBLIC_URL = (process.env.CHLIO_PUBLIC_URL || process.env.GOOGLE_REDIRECT_URI || 'https://chlio.ereuna.org').replace(/\/+$/, '');
+
+// ---------------------------------------------------------------- authentication (server/auth.js)
+const auth = createAuth({
+  db,
+  google: createGoogleClient({
+    clientId: process.env.GOOGLE_CLIENT_ID || '',
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
+  }),
+  allowedEmails: parseAllowedEmails(process.env.CHLIO_ALLOWED_EMAILS),
+  publicUrl: PUBLIC_URL,
+  cookieSecure: process.env.CHLIO_COOKIE_SECURE !== 'false',
+});
+if (parseAllowedEmails(process.env.CHLIO_ALLOWED_EMAILS).size === 0) {
+  console.warn('[auth] CHLIO_ALLOWED_EMAILS is empty: nobody can sign in with Google. Access tokens still work.');
+}
+
+/** Origins the calendar-connect flow may return to: our public URL, GOOGLE_REDIRECT_URI, localhost. */
+function isAllowedOrigin(value) {
+  try {
+    const u = new URL(value);
+    const known = [PUBLIC_URL, process.env.GOOGLE_REDIRECT_URI].filter(Boolean).map((x) => new URL(x).origin);
+    return known.includes(u.origin) || ['localhost', '127.0.0.1'].includes(u.hostname);
+  } catch {
+    return false;
+  }
+}
 
 const app = express();
+app.disable('x-powered-by');
+app.set('trust proxy', 1); // cloudflared / reverse proxy on the same host
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 200 * 1024 * 1024 } });
 
-app.use(cors());
+app.use((_req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  next();
+});
+
+// The gate. It runs BEFORE body parsing so unauthenticated callers can't make us buffer 50 MB of JSON.
+// There is deliberately no CORS middleware: the SPA is same-origin and machine clients don't need it.
+app.use('/api', auth.middleware);
+app.use('/api', auth.router);
 app.use(express.json({ limit: '50mb' }));
 
+// Public liveness probe. It must not reveal internal addresses (it used to return the Ollama URL).
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, ollamaUrl: process.env.OLLAMA_URL || 'http://192.168.100.17:11434' });
+  res.json({ ok: true });
 });
 
 // Ollama AI Proxy (supports streaming /api/generate + automatic port & model discovery on 192.168.100.17)
@@ -205,10 +237,23 @@ app.use('/api/nextcloud', (req, res) => {
     const proxyHeaders = { ...req.headers };
     delete proxyHeaders.host;
     delete proxyHeaders['x-nextcloud-target-url'];
+    // Never forward Chlio's own credentials to the Nextcloud server (or whatever host was requested).
+    delete proxyHeaders.cookie;
+    delete proxyHeaders['x-chlio-request'];
+    delete proxyHeaders.origin;
+    if (/^bearer\s+chlio_pat_/i.test(String(proxyHeaders.authorization || ''))) delete proxyHeaders.authorization;
     proxyHeaders.host = targetParsed.host;
 
-    // Use server-side .env NEXTCLOUD_USERNAME & NEXTCLOUD_PASSWORD if client did not provide password
-    if (process.env.NEXTCLOUD_USERNAME && process.env.NEXTCLOUD_PASSWORD) {
+    // Use server-side .env NEXTCLOUD_USERNAME & NEXTCLOUD_PASSWORD if client did not provide password.
+    // ONLY for the configured Nextcloud host: the target comes from a request header, so injecting the
+    // stored password for any host would hand it to whoever the caller points the proxy at.
+    let defaultHost = '';
+    try {
+      defaultHost = new URL(/^https?:\/\//i.test(defaultTarget) ? defaultTarget : `http://${defaultTarget}`).host;
+    } catch {
+      // leave empty: no injection
+    }
+    if (defaultHost && targetParsed.host === defaultHost && process.env.NEXTCLOUD_USERNAME && process.env.NEXTCLOUD_PASSWORD) {
       const authHeader = String(proxyHeaders.authorization || '');
       let shouldInjectEnvAuth = !authHeader;
       if (authHeader.startsWith('Basic ')) {
@@ -846,13 +891,18 @@ app.post('/api/jira/issues/:key/comments', async (req, res) => {
 // Google Calendar Integration Endpoints
 // ==========================================
 
+// Google Calendar connection (separate from login). The OAuth `state` is signed by the server and expires,
+// so only a flow started by a signed-in user can attach a Google account. The login session is NOT touched
+// here any more: the callback used to log the whole instance in as whichever Google account completed it.
 app.get('/api/auth/google/url', (req, res) => {
   try {
-    const defaultUri = process.env.GOOGLE_REDIRECT_URI || 'https://chlio.ereuna.org';
-    const origin = req.query.origin || defaultUri;
-    const redirectUri = req.query.redirectUri || defaultUri;
-    const authUrl = getGoogleAuthUrl(redirectUri, origin);
-    res.json({ ok: true, url: authUrl });
+    const origin = req.query.origin || PUBLIC_URL;
+    const redirectUri = req.query.redirectUri || process.env.GOOGLE_REDIRECT_URI || PUBLIC_URL;
+    if (!isAllowedOrigin(origin) || !isAllowedOrigin(redirectUri)) {
+      return res.status(400).json({ error: 'origin/redirectUri is not an allowed origin' });
+    }
+    const state = auth.signState({ returnOrigin: origin, redirectUri });
+    res.json({ ok: true, url: getGoogleAuthUrl(redirectUri, state) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -860,12 +910,13 @@ app.get('/api/auth/google/url', (req, res) => {
 
 app.post('/api/auth/google/exchange', async (req, res) => {
   try {
-    const { code, redirectUri } = req.body;
+    const { code, state } = req.body || {};
     if (!code) {
       return res.status(400).json({ error: 'Authorization code is required' });
     }
-    const defaultUri = process.env.GOOGLE_REDIRECT_URI || 'https://chlio.ereuna.org';
-    const result = await exchangeGoogleCode(code, redirectUri || defaultUri);
+    const flow = auth.verifyState(state);
+    if (!flow) return res.status(400).json({ error: 'Invalid or expired state; start the connection again' });
+    const result = await exchangeGoogleCode(code, flow.redirectUri);
     res.json({ ok: true, email: result.email });
   } catch (err) {
     console.error('Exchange error:', err);
@@ -875,30 +926,20 @@ app.post('/api/auth/google/exchange', async (req, res) => {
 
 app.get('/api/auth/google/callback', async (req, res) => {
   try {
-    const defaultUri = process.env.GOOGLE_REDIRECT_URI || 'https://chlio.ereuna.org';
     const { code, state, error } = req.query;
+    const flow = auth.verifyState(state);
+    if (!flow) return res.status(400).send('Invalid or expired state');
     if (error) {
-      return res.redirect(`${defaultUri}/?google_error=${encodeURIComponent(error)}`);
+      return res.redirect(`${flow.returnOrigin}/?google_error=${encodeURIComponent(String(error))}`);
     }
-    if (!code) {
+    if (typeof code !== 'string' || !code) {
       return res.status(400).send('Missing authorization code');
     }
-    const { returnOrigin, email } = await handleGoogleCallback(code, state);
-    if (email) {
-      saveAuthSession({
-        uid: `google:${email.toLowerCase()}`,
-        email,
-        name: email.split('@')[0],
-        photoURL: '',
-        emailVerified: true,
-        provider: 'google.com',
-        lastLoginAt: new Date().toISOString(),
-      });
-    }
-    res.redirect(`${returnOrigin || defaultUri}?google_connected=true`);
+    await handleGoogleCallback(code, flow.redirectUri);
+    res.redirect(`${flow.returnOrigin}?google_connected=true`);
   } catch (err) {
     console.error('Google callback error:', err);
-    res.redirect(`${process.env.GOOGLE_REDIRECT_URI || 'https://chlio.ereuna.org'}/?google_error=${encodeURIComponent(err.message)}`);
+    res.redirect(`${PUBLIC_URL}/?google_error=${encodeURIComponent('Could not connect Google Calendar')}`);
   }
 });
 
@@ -952,8 +993,15 @@ app.delete('/api/google/events/:id', async (req, res) => {
 // iCalendar (.ics) Protocol Endpoints
 // ==========================================
 
-// Live iCal subscription feed (for Google Calendar "Add from URL")
-app.get('/api/calendar/feed.ics', (_req, res) => {
+// The subscription URL (with its secret key) for "Add from URL" in Google/Apple Calendar.
+app.get('/api/calendar/feed-url', (_req, res) => {
+  res.json({ ok: true, url: `${PUBLIC_URL}/api/calendar/feed.ics?key=${auth.getFeedKey()}` });
+});
+
+// Live iCal subscription feed. Calendar apps can't send auth headers, so this one route is public
+// but needs the secret `key` (constant-time compared). A wrong/missing key looks like a 404.
+app.get('/api/calendar/feed.ics', (req, res) => {
+  if (!auth.checkFeedKey(req.query.key)) return res.status(404).send('Not found');
   try {
     const bootstrap = getBootstrap();
     const state = bootstrap.state || {};
@@ -1016,97 +1064,10 @@ app.post('/api/calendar/import-ics', async (req, res) => {
 });
 
 // ==========================================
-// Firebase Google Authentication Endpoints
+// Sign-in / sessions / access tokens live in server/auth.js (/api/auth/login/google, /api/auth/me,
+// /api/auth/logout, /api/tokens). The Firebase endpoints that used to be here are gone on purpose:
+// /api/auth/custom-token minted a valid Firebase ID token for ANY email address, unauthenticated.
 // ==========================================
-app.get('/api/auth/firebase-config', async (req, res) => {
-  try {
-    const config = await getFirebaseWebConfig(req.hostname);
-    res.json({ ok: true, config });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.get('/api/auth/me', (_req, res) => {
-  try {
-    const user = getSavedAuthSession();
-    res.json({ ok: true, authenticated: !!user, user });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.post('/api/auth/verify', async (req, res) => {
-  try {
-    const { idToken } = req.body || {};
-    const user = await verifyFirebaseIdToken(idToken);
-    res.json({ ok: true, user });
-  } catch (err) {
-    console.error('Firebase token verification error:', err.message);
-    res.status(401).json({ error: err.message });
-  }
-});
-
-app.post('/api/auth/custom-token', async (req, res) => {
-  try {
-    const googleStatus = getGoogleStatus();
-    const email = req.body?.email || (googleStatus.connected ? googleStatus.email : '');
-    const name = req.body?.name || (email ? email.split('@')[0] : 'Google User');
-    const photoURL = req.body?.photoURL || '';
-    if (!email) {
-      return res.status(400).json({ error: 'No Google account email available for custom token' });
-    }
-    const uid = `google:${email.toLowerCase()}`;
-    const webConfig = await getFirebaseWebConfig(req.hostname);
-    let customToken = '';
-    let idToken = '';
-
-    try {
-      customToken = createFirebaseCustomToken(uid, { email, name });
-      // Exchange custom token for a real Firebase ID token via Identity Toolkit
-      const exchangeRes = await fetch(
-        `https://identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key=${encodeURIComponent(webConfig.apiKey)}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token: customToken, returnSecureToken: true }),
-        }
-      );
-      if (exchangeRes.ok) {
-        const exData = await exchangeRes.json();
-        idToken = exData.idToken || '';
-      } else {
-        customToken = '';
-      }
-    } catch {
-      customToken = '';
-    }
-
-    const user = {
-      uid,
-      email,
-      name,
-      photoURL,
-      emailVerified: true,
-      provider: 'google.com',
-      lastLoginAt: new Date().toISOString(),
-    };
-    saveAuthSession(user);
-    res.json({ ok: true, customToken, idToken, user });
-  } catch (err) {
-    console.error('Custom token error:', err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.post('/api/auth/logout', (_req, res) => {
-  try {
-    clearAuthSession();
-    res.json({ ok: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
 // ==========================================
 // BibTeX & Citation Graph Discovery Endpoints

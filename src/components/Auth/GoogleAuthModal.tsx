@@ -1,67 +1,118 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useAppStore } from '../../store/appStore';
 import {
-  signInWithGoogleFirebase,
-  signInWithServerCustomToken,
-  logoutFirebaseUser,
-} from '../../services/firebaseAuth';
+  logout,
+  listAccessTokens,
+  createAccessToken,
+  revokeAccessToken,
+  type AccessToken,
+  type CreatedToken,
+} from '../../services/authService';
 import { Button, Icon } from '../UI/clio';
 
-interface GoogleAuthModalProps {
+interface AccountModalProps {
   open: boolean;
   onClose: () => void;
 }
 
-const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ open, onClose }) => {
+const fmtDate = (ms: number | null) => (ms ? new Date(ms).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '—');
+
+const field: React.CSSProperties = {
+  padding: '8px 10px',
+  borderRadius: 8,
+  border: '1px solid var(--line-strong)',
+  background: 'var(--surface)',
+  color: 'var(--ink)',
+  fontSize: 13,
+};
+
+/**
+ * Account + access tokens. (File keeps its old name to avoid import churn; the old Firebase popup and the
+ * "sign in as any email" form are gone. Sign-in itself is the full-page flow in AuthGate.)
+ */
+const GoogleAuthModal: React.FC<AccountModalProps> = ({ open, onClose }) => {
   const { authUser, setAuthUser } = useAppStore();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [customEmail, setCustomEmail] = useState(
-    import.meta.env.VITE_USER_EMAIL || ''
-  );
-  const [customName, setCustomName] = useState(import.meta.env.VITE_USER_NAME || '');
+  const [tokens, setTokens] = useState<AccessToken[]>([]);
+  const [name, setName] = useState('');
+  const [scope, setScope] = useState<'read' | 'write'>('write');
+  const [days, setDays] = useState<string>('90');
+  const [created, setCreated] = useState<CreatedToken | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const refresh = useCallback(async () => {
+    try {
+      setTokens(await listAccessTokens());
+    } catch (err: any) {
+      setError(err?.message || 'Could not load access tokens');
+    }
+  }, []);
+
+  useEffect(() => {
+    if (open && authUser) refresh();
+    if (!open) {
+      setCreated(null); // never keep a shown-once secret around after the dialog closes
+      setCopied(false);
+      setError(null);
+    }
+  }, [open, authUser, refresh]);
 
   if (!open) return null;
-
-  const handleFirebaseGoogleSignIn = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      const user = await signInWithGoogleFirebase();
-      setAuthUser(user);
-      onClose();
-    } catch (err: any) {
-      setError(err?.message || 'Google Sign-In failed');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleCustomTokenSignIn = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!customEmail.trim()) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const user = await signInWithServerCustomToken(customEmail.trim(), customName.trim());
-      setAuthUser(user);
-      onClose();
-    } catch (err: any) {
-      setError(err?.message || 'Firebase Custom Token sign-in failed');
-    } finally {
-      setBusy(false);
-    }
-  };
 
   const handleLogout = async () => {
     setBusy(true);
     try {
-      await logoutFirebaseUser();
+      await logout();
+    } finally {
       setAuthUser(null);
+      window.location.reload(); // back to the sign-in screen with a clean in-memory state
+    }
+  };
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const t = await createAccessToken({ name: name.trim(), scope, expiresInDays: days === 'never' ? null : Number(days) });
+      setCreated(t);
+      setCopied(false);
+      setName('');
+      await refresh();
+    } catch (err: any) {
+      setError(err?.message || 'Could not create the token');
     } finally {
       setBusy(false);
     }
   };
+
+  const handleRevoke = async (t: AccessToken) => {
+    if (!window.confirm(`Revoke "${t.name}"? Anything using it will stop working immediately.`)) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await revokeAccessToken(t.id);
+      await refresh();
+    } catch (err: any) {
+      setError(err?.message || 'Could not revoke the token');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copy = async () => {
+    if (!created) return;
+    try {
+      await navigator.clipboard.writeText(created.token);
+      setCopied(true);
+    } catch {
+      setError('Copy failed. Select the token text and copy it manually.');
+    }
+  };
+
+  const active = tokens.filter((t) => t.active);
 
   return (
     <div
@@ -81,7 +132,9 @@ const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ open, onClose }) => {
       <div
         style={{
           width: '100%',
-          maxWidth: 440,
+          maxWidth: 560,
+          maxHeight: '90vh',
+          overflowY: 'auto',
           background: 'var(--surface-raised, #ffffff)',
           border: '1px solid var(--line)',
           borderRadius: 16,
@@ -93,209 +146,108 @@ const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ open, onClose }) => {
         onClick={(e) => e.stopPropagation()}
       >
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: 10,
-                background: 'rgba(10, 122, 255, 0.12)',
-                color: '#0a7aff',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontWeight: 700,
-              }}
-            >
-              G
-            </div>
-            <div>
-              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Google Authentication</h3>
-              <div style={{ fontSize: 12, color: 'var(--ink-3)' }}>
-                Firebase Auth · Server-configured (.env)
-              </div>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            style={{
-              border: 'none',
-              background: 'transparent',
-              color: 'var(--ink-2)',
-              cursor: 'pointer',
-              padding: 4,
-            }}
-          >
+          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Account</h3>
+          <button onClick={onClose} aria-label="Close" style={{ border: 'none', background: 'transparent', color: 'var(--ink-2)', cursor: 'pointer', padding: 4 }}>
             <Icon name="x" size={18} />
           </button>
         </div>
 
-        {authUser ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 12,
-                padding: 14,
-                borderRadius: 12,
-                background: 'var(--surface-inset)',
-                border: '1px solid var(--line)',
-              }}
-            >
-              {authUser.photoURL ? (
-                <img
-                  src={authUser.photoURL}
-                  alt={authUser.name}
-                  style={{ width: 44, height: 44, borderRadius: '50%', objectFit: 'cover' }}
-                />
-              ) : (
-                <div
-                  style={{
-                    width: 44,
-                    height: 44,
-                    borderRadius: '50%',
-                    background: '#0a7aff',
-                    color: '#fff',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontWeight: 700,
-                    fontSize: 16,
-                  }}
-                >
-                  {(authUser.name || authUser.email || 'U')[0].toUpperCase()}
-                </div>
-              )}
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: 14 }}>{authUser.name}</div>
-                <div style={{ fontSize: 12, color: 'var(--ink-2)', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {authUser.email}
-                </div>
-                <div style={{ fontSize: 11, color: '#10b981', marginTop: 2, fontWeight: 600 }}>
-                  ✓ Verified via Firebase Admin SDK
-                </div>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <Button variant="secondary" onClick={onClose}>
-                Done
-              </Button>
-              <Button variant="primary" onClick={handleLogout} disabled={busy}>
-                Sign Out
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {error && (
-              <div
-                style={{
-                  padding: '10px 12px',
-                  borderRadius: 8,
-                  background: 'rgba(239, 68, 68, 0.1)',
-                  border: '1px solid rgba(239, 68, 68, 0.3)',
-                  color: 'var(--danger, #ef4444)',
-                  fontSize: 12,
-                }}
-              >
-                {error}
+        {authUser && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 14, borderRadius: 12, background: 'var(--surface-inset)', border: '1px solid var(--line)' }}>
+            {authUser.photoURL ? (
+              <img src={authUser.photoURL} alt="" referrerPolicy="no-referrer" style={{ width: 44, height: 44, borderRadius: '50%', objectFit: 'cover' }} />
+            ) : (
+              <div style={{ width: 44, height: 44, borderRadius: '50%', background: '#0a7aff', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 16 }}>
+                {(authUser.name || authUser.email || 'U')[0].toUpperCase()}
               </div>
             )}
-
-            <button
-              onClick={handleFirebaseGoogleSignIn}
-              disabled={busy}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 10,
-                width: '100%',
-                padding: '11px 16px',
-                borderRadius: 10,
-                border: '1px solid var(--line-strong)',
-                background: 'var(--surface)',
-                color: 'var(--ink)',
-                fontSize: 14,
-                fontWeight: 600,
-                cursor: busy ? 'wait' : 'pointer',
-                boxShadow: '0 2px 6px rgba(0,0,0,0.06)',
-              }}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24">
-                <path
-                  fill="#4285F4"
-                  d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"
-                />
-                <path
-                  fill="#34A853"
-                  d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.11-6.72-4.96H1.29v3.14C3.26 21.3 7.31 24 12 24z"
-                />
-                <path
-                  fill="#FBBC05"
-                  d="M5.28 14.24c-.24-.72-.38-1.49-.38-2.24s.14-1.52.38-2.24V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.99-3.14z"
-                />
-                <path
-                  fill="#EA4335"
-                  d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.99 3.14c.95-2.85 3.6-4.96 6.72-4.96z"
-                />
-              </svg>
-              <span>{busy ? 'Signing in…' : 'Continue with Google (Popup)'}</span>
-            </button>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '4px 0' }}>
-              <div style={{ flex: 1, height: 1, background: 'var(--line)' }} />
-              <span style={{ fontSize: 11, color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                Or Instant Server Key Sign-In (iPad Safari)
-              </span>
-              <div style={{ flex: 1, height: 1, background: 'var(--line)' }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 700, fontSize: 14 }}>{authUser.name}</div>
+              <div style={{ fontSize: 12, color: 'var(--ink-2)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{authUser.email}</div>
             </div>
-
-            <form onSubmit={handleCustomTokenSignIn} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <input
-                  type="text"
-                  value={customName}
-                  onChange={(e) => setCustomName(e.target.value)}
-                  placeholder="Display Name"
-                  style={{
-                    flex: 1,
-                    padding: '8px 10px',
-                    borderRadius: 8,
-                    border: '1px solid var(--line)',
-                    background: 'var(--surface-inset)',
-                    color: 'var(--ink)',
-                    fontSize: 13,
-                  }}
-                />
-                <input
-                  type="email"
-                  value={customEmail}
-                  onChange={(e) => setCustomEmail(e.target.value)}
-                  placeholder="Google Email"
-                  style={{
-                    flex: 1.5,
-                    padding: '8px 10px',
-                    borderRadius: 8,
-                    border: '1px solid var(--line)',
-                    background: 'var(--surface-inset)',
-                    color: 'var(--ink)',
-                    fontSize: 13,
-                  }}
-                />
-              </div>
-              <Button variant="primary" type="submit" disabled={busy}>
-                Authenticate with Firebase Admin Key
-              </Button>
-            </form>
+            <Button variant="secondary" onClick={handleLogout} disabled={busy}>
+              Sign out
+            </Button>
           </div>
         )}
+
+        {error && (
+          <div role="alert" style={{ marginTop: 14, padding: '10px 12px', borderRadius: 8, background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', color: 'var(--danger, #ef4444)', fontSize: 12 }}>
+            {error}
+          </div>
+        )}
+
+        <h4 style={{ margin: '22px 0 4px', fontSize: 14 }}>Access tokens</h4>
+        <p style={{ margin: '0 0 12px', fontSize: 12, color: 'var(--ink-2)', lineHeight: 1.5 }}>
+          For connecting Claude Desktop, Open WebUI or scripts to Chlio. Send a token as{' '}
+          <code>Authorization: Bearer &lt;token&gt;</code>. A token is shown <strong>once</strong>; only a hash is kept, so
+          create one per app and revoke it if it leaks.
+        </p>
+
+        {created && (
+          <div style={{ marginBottom: 14, padding: 12, borderRadius: 10, background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.35)' }}>
+            <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
+              “{created.name}” created. Copy it now; it cannot be shown again.
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input readOnly value={created.token} onFocus={(e) => e.currentTarget.select()} style={{ ...field, flex: 1, fontFamily: 'var(--font-mono, monospace)', fontSize: 12 }} />
+              <Button variant="primary" onClick={copy}>
+                {copied ? 'Copied' : 'Copy'}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        <form onSubmit={handleCreate} style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name, e.g. Claude Desktop" maxLength={80} style={{ ...field, flex: '1 1 180px' }} />
+          <select value={scope} onChange={(e) => setScope(e.target.value as 'read' | 'write')} style={field}>
+            <option value="write">Read &amp; write</option>
+            <option value="read">Read-only</option>
+          </select>
+          <select value={days} onChange={(e) => setDays(e.target.value)} style={field}>
+            <option value="30">30 days</option>
+            <option value="90">90 days</option>
+            <option value="365">1 year</option>
+            <option value="never">No expiry</option>
+          </select>
+          <Button variant="primary" type="submit" disabled={busy || !name.trim()}>
+            Create token
+          </Button>
+        </form>
+
+        {active.length === 0 ? (
+          <div style={{ fontSize: 12, color: 'var(--ink-3)' }}>No active tokens.</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {active.map((t) => (
+              <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, border: '1px solid var(--line)' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>
+                    {t.name}{' '}
+                    <span style={{ fontSize: 10.5, fontWeight: 700, padding: '1px 6px', borderRadius: 6, background: t.scope === 'read' ? 'rgba(10,122,255,0.12)' : 'rgba(245,158,11,0.15)' }}>
+                      {t.scope === 'read' ? 'read-only' : 'read & write'}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 2 }}>
+                    <code>{t.prefix}…</code> · created {fmtDate(t.created_at)} · last used {fmtDate(t.last_used_at)} · expires {t.expires_at ? fmtDate(t.expires_at) : 'never'}
+                  </div>
+                </div>
+                <Button variant="secondary" onClick={() => handleRevoke(t)} disabled={busy}>
+                  Revoke
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 20 }}>
+          <Button variant="secondary" onClick={onClose}>
+            Done
+          </Button>
+        </div>
       </div>
     </div>
   );
 };
 
 export default GoogleAuthModal;
-

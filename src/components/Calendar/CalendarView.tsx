@@ -10,7 +10,7 @@ import {
   fetchGoogleCalendarEvents,
   createGoogleCalendarEvent,
   importIcsEvents,
-  getIcsFeedUrl,
+  fetchIcsFeedUrl,
   getIcsExportUrl,
   type GoogleStatus,
 } from '../../services/calendarSyncService';
@@ -131,10 +131,11 @@ const CalendarView: React.FC = () => {
 
   // Check URL params and load Google status on mount
   useEffect(() => {
-    setIcsFeedUrl(getIcsFeedUrl());
+    fetchIcsFeedUrl().then(setIcsFeedUrl).catch(() => {});
 
     const searchParams = new URLSearchParams(window.location.search);
     const authCode = searchParams.get('code');
+    const authState = searchParams.get('state');
     const googleConnected = searchParams.get('google_connected');
     const googleError = searchParams.get('google_error');
 
@@ -142,7 +143,7 @@ const CalendarView: React.FC = () => {
       window.history.replaceState({}, '', window.location.pathname);
       setIsSyncingGoogle(true);
       setSyncNotice('Connecting Google account...');
-      exchangeGoogleCode(authCode, window.location.origin || 'https://chlio.ereuna.org')
+      exchangeGoogleCode(authCode, window.location.origin || 'https://chlio.ereuna.org', authState)
         .then((res) => {
           setGoogleStatus({ connected: true, email: res.email });
           setSyncNotice(`Connected to Google Calendar (${res.email})! Syncing events...`);

@@ -52,7 +52,10 @@ export function clearGoogleTokens() {
 /**
  * Generate Google OAuth 2.0 authorization URL
  */
-export function getGoogleAuthUrl(redirectUri = getDefaultRedirectUri(), returnOrigin = process.env.GOOGLE_REDIRECT_URI || 'https://chlio.ereuna.org') {
+export function getGoogleAuthUrl(redirectUri = getDefaultRedirectUri(), state) {
+  // `state` must be a server-signed blob (auth.signState) so the callback can prove this flow was started
+  // by a signed-in Chlio user; an unsigned state would let anyone link their own Google calendar.
+  if (!state) throw new Error('A signed OAuth state is required');
   const clientId = getClientId();
   if (!clientId) {
     throw new Error('Google OAuth Client ID is not configured. Please set GOOGLE_CLIENT_ID in your .env file.');
@@ -64,8 +67,6 @@ export function getGoogleAuthUrl(redirectUri = getDefaultRedirectUri(), returnOr
     'https://www.googleapis.com/auth/userinfo.email',
   ].join(' ');
 
-  const statePayload = Buffer.from(JSON.stringify({ returnOrigin, redirectUri })).toString('base64url');
-
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -73,7 +74,7 @@ export function getGoogleAuthUrl(redirectUri = getDefaultRedirectUri(), returnOr
     scope: scopes,
     access_type: 'offline',
     prompt: 'consent',
-    state: statePayload,
+    state,
   });
 
   return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
@@ -138,25 +139,10 @@ export async function exchangeGoogleCode(code, redirectUri = getDefaultRedirectU
 /**
  * Exchange authorization code for tokens from server callback
  */
-export async function handleGoogleCallback(code, state) {
-  let returnOrigin = process.env.GOOGLE_REDIRECT_URI || 'https://chlio.ereuna.org';
-  let redirectUri = getDefaultRedirectUri();
-  if (state) {
-    try {
-      const decoded = JSON.parse(Buffer.from(state, 'base64url').toString('utf-8'));
-      if (decoded.returnOrigin) {
-        returnOrigin = decoded.returnOrigin;
-      }
-      if (decoded.redirectUri) {
-        redirectUri = decoded.redirectUri;
-      }
-    } catch (e) {
-      console.warn('Could not decode state param:', e.message);
-    }
-  }
-
+export async function handleGoogleCallback(code, redirectUri = getDefaultRedirectUri()) {
+  // The caller has already verified the signed state and taken redirectUri from it.
   const { email } = await exchangeGoogleCode(code, redirectUri);
-  return { returnOrigin, email };
+  return { email };
 }
 
 /**

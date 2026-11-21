@@ -25,12 +25,14 @@ export async function fetchGoogleAuthUrl(redirectUri = getDefaultRedirectUri()):
 
 export async function exchangeGoogleCode(
   code: string,
-  redirectUri = getDefaultRedirectUri()
+  _redirectUri = getDefaultRedirectUri(),
+  state: string | null = null
 ): Promise<{ ok: boolean; email: string }> {
+  // The server-signed `state` from the redirect URL proves this flow was started from this app.
   const res = await fetch('/api/auth/google/exchange', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ code, redirectUri }),
+    body: JSON.stringify({ code, state }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: 'Token exchange failed' }));
@@ -110,8 +112,12 @@ export async function importIcsEvents(options: { icsText?: string; url?: string 
   return data.events || [];
 }
 
-export function getIcsFeedUrl(): string {
-  return `${window.location.origin}/api/calendar/feed.ics`;
+/** The subscription URL carries a secret key, so it comes from the (authenticated) server. */
+export async function fetchIcsFeedUrl(): Promise<string> {
+  const res = await fetch('/api/calendar/feed-url');
+  if (!res.ok) throw new Error('Failed to load the calendar feed URL');
+  const data = await res.json();
+  return data.url as string;
 }
 
 export function getIcsExportUrl(): string {
