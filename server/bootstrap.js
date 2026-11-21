@@ -3,6 +3,7 @@ import path from 'path';
 import {
   loadStatePayload,
   saveStatePayload,
+  getStateRevision,
   getUploadPath,
   registerFileBlob,
   fileBlobExists,
@@ -74,19 +75,31 @@ function stripEphemeralState(state) {
 }
 
 export function getBootstrap() {
+  const revision = getStateRevision();
   const stored = loadStatePayload();
   if (!stored || Object.keys(stored).length === 0) {
-    return { empty: true, state: null };
+    return { empty: true, state: null, revision };
   }
 
   const state = stripEphemeralState(stored);
   if (state.files) {
     state.files = hydrateFilesForClient(state.files);
   }
-  return { empty: false, state };
+  return { empty: false, state, revision };
 }
 
-export function putBootstrap(incoming) {
+/**
+ * Saves the state sent by the browser, but only if it was based on the current revision
+ * (`ifMatchRevision`). Otherwise something else (the MCP server, another tab) changed the state since,
+ * and a blind overwrite would silently destroy that change: return { conflict: true } with the current
+ * state so the client can merge. All of this is synchronous, so the check-then-write is atomic.
+ */
+export function putBootstrap(incoming, ifMatchRevision) {
+  const currentRevision = getStateRevision();
+  if (ifMatchRevision !== currentRevision) {
+    return { conflict: true, ...getBootstrap() };
+  }
+
   const state = {};
   for (const key of PERSIST_KEYS) {
     if (incoming[key] !== undefined) {
@@ -126,8 +139,8 @@ export function putBootstrap(incoming) {
     });
   }
 
-  saveStatePayload(state);
-  return { ok: true };
+  const revision = saveStatePayload(state);
+  return { ok: true, revision };
 }
 
 export function getFileContent(fileId) {

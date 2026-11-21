@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
 import { initSchema } from './schema.js';
+import { createStateStore } from './stateStore.js';
 
 const DATA_DIR = process.env.CLIO_DATA_DIR || path.join(process.cwd(), 'data');
 const DB_PATH = path.join(DATA_DIR, 'clio.db');
@@ -13,6 +14,9 @@ const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
 
 initSchema(db);
+
+const stateStore = createStateStore(db);
+export const { getStateRevision, loadStatePayload, saveStatePayload, mutateState } = stateStore;
 
 export { db, DATA_DIR, UPLOADS_DIR, DB_PATH };
 
@@ -45,21 +49,4 @@ export function deleteFileBlob(fileId) {
     fs.unlinkSync(row.storage_path);
   }
   db.prepare('DELETE FROM file_blobs WHERE file_id = ?').run(fileId);
-}
-
-export function loadStatePayload() {
-  const row = db.prepare('SELECT payload FROM app_state WHERE id = 1').get();
-  if (!row?.payload) return null;
-  try {
-    return JSON.parse(row.payload);
-  } catch {
-    return null;
-  }
-}
-
-export function saveStatePayload(payload) {
-  const json = JSON.stringify(payload);
-  db.prepare(`
-    UPDATE app_state SET payload = ?, updated_at = datetime('now') WHERE id = 1
-  `).run(json);
 }

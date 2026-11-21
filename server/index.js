@@ -13,7 +13,8 @@ import fs from 'fs';
 import http from 'http';
 import https from 'https';
 import { getBootstrap, putBootstrap, getFileContent, saveFileContent } from './bootstrap.js';
-import { db, deleteFileBlob } from './db.js';
+import { db, deleteFileBlob, getStateRevision, loadStatePayload, mutateState } from './db.js';
+import { createMcpHandler } from './mcp/handler.js';
 import { createAuth, createGoogleClient, parseAllowedEmails } from './auth.js';
 import {
   getJiraConfig,
@@ -83,6 +84,26 @@ app.use((_req, res, next) => {
 // There is deliberately no CORS middleware: the SPA is same-origin and machine clients don't need it.
 app.use('/api', auth.middleware);
 app.use('/api', auth.router);
+
+// MCP server (Claude Desktop, Open WebUI, ...). Access tokens only; see server/mcp/.
+const mcpHandler = createMcpHandler({
+  store: { read: () => loadStatePayload() || {}, mutate: mutateState },
+  deps: {
+    createGoogleEvent: (e) => createGoogleCalendarEvent(e),
+    jira: {
+      getIssues: () => getJiraIssues(),
+      createIssue: (d) => createJiraIssue(d),
+      transition: (key, to) => transitionJiraIssue(key, to),
+      comment: (key, body) => addJiraComment(key, body),
+    },
+  },
+});
+app.post('/mcp', auth.tokenGate, express.json({ limit: '2mb' }), mcpHandler);
+app.all('/mcp', (_req, res) => {
+  res.setHeader('Allow', 'POST');
+  res.status(405).json({ jsonrpc: '2.0', error: { code: -32000, message: 'Method not allowed: this MCP server is stateless, use POST' }, id: null });
+});
+
 app.use(express.json({ limit: '50mb' }));
 
 // Public liveness probe. It must not reveal internal addresses (it used to return the Ollama URL).
@@ -310,6 +331,7 @@ app.use('/api/nextcloud', (req, res) => {
 app.get('/api/bootstrap', (_req, res) => {
   try {
     const result = getBootstrap();
+    res.setHeader('ETag', `"${result.revision}"`);
     res.json(result);
   } catch (err) {
     console.error('GET /api/bootstrap error:', err);
@@ -317,9 +339,23 @@ app.get('/api/bootstrap', (_req, res) => {
   }
 });
 
+// Cheap poll target: lets the browser notice changes made elsewhere (e.g. via MCP) without fetching 800 KB.
+app.get('/api/bootstrap/revision', (_req, res) => {
+  res.json({ revision: getStateRevision() });
+});
+
+// Saves require `If-Match: <revision the client last saw>` so a stale tab can never overwrite newer data.
 app.put('/api/bootstrap', (req, res) => {
   try {
-    const result = putBootstrap(req.body);
+    const m = /^\s*(?:W\/)?"?(\d+)"?\s*$/.exec(req.get('if-match') || '');
+    if (!m) {
+      return res.status(428).json({ error: 'If-Match header with the last seen revision is required', revision: getStateRevision() });
+    }
+    const result = putBootstrap(req.body, Number(m[1]));
+    if (result.conflict) {
+      return res.status(409).json({ error: 'conflict', revision: result.revision, empty: result.empty, state: result.state });
+    }
+    res.setHeader('ETag', `"${result.revision}"`);
     res.json(result);
   } catch (err) {
     console.error('PUT /api/bootstrap error:', err);
@@ -1297,7 +1333,8 @@ app.post('/api/arxiv/citations', async (req, res) => {
 if (fs.existsSync(DIST_DIR)) {
   app.use(express.static(DIST_DIR));
   app.get('*', (req, res, next) => {
-    if (req.path.startsWith('/api/')) return next();
+    // never answer API / MCP / OAuth-discovery probes with the SPA's index.html
+    if (req.path.startsWith('/api/') || req.path.startsWith('/mcp') || req.path.startsWith('/.well-known/')) return next();
     res.sendFile(path.join(DIST_DIR, 'index.html'));
   });
 }

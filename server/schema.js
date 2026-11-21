@@ -54,4 +54,11 @@ export function initSchema(db) {
     value TEXT NOT NULL
   );
 `);
+
+  // Optimistic concurrency for the synced state: every successful write bumps `revision`; the browser
+  // must present the revision it last saw (If-Match) and the MCP server writes through mutateState().
+  const cols = db.prepare('PRAGMA table_info(app_state)').all().map((c) => c.name);
+  if (!cols.includes('revision')) {
+    db.exec('ALTER TABLE app_state ADD COLUMN revision INTEGER NOT NULL DEFAULT 0');
+  }
 }

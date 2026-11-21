@@ -112,3 +112,30 @@ the sign-in routes and the secret-keyed calendar feed are public.
   Register `https://<your host>/api/auth/login/google/callback` as an authorized redirect URI on the Google client.
 - **Tests:** `cd server && npm install && npm test` (needs `better-sqlite3`; run it in the node:20 image).
 - **Locked out?** Anyone who can `docker exec` on the host can mint a token with the CLI above.
+
+## MCP server (Claude Desktop, Claude Code, Open WebUI)
+
+`POST https://<host>/mcp`: Streamable HTTP, stateless, **access tokens only** (create one under Account ->
+Access tokens; a browser session is refused). Pick tool groups with `?groups=`: `mindmaps`, `planner`, `notes`,
+`jira`, `search` (default all, about 4.2k tokens of tool schema; `mindmaps` alone is about 1.7k). A read-only token
+sees only the read tools. Full tool list and design: `docs/changelog/*_mcp_server_changelog.md`.
+
+**Claude Desktop** (`claude_desktop_config.json`; keep spaces out of the argument, the header comes from `env`):
+
+```json
+{ "mcpServers": { "chlio": {
+    "command": "npx",
+    "args": ["-y", "mcp-remote", "https://chlio.ereuna.org/mcp", "--header", "Authorization:${AUTH_HEADER}"],
+    "env": { "AUTH_HEADER": "Bearer chlio_pat_..." } } } }
+```
+
+**Claude Code:** `claude mcp add --transport http chlio https://chlio.ereuna.org/mcp --header "Authorization: Bearer chlio_pat_..."`
+
+**Open WebUI:** Admin -> Settings -> External Tools -> add a server of type *MCP (Streamable HTTP)*, URL
+`https://chlio.ereuna.org/mcp?groups=mindmaps,planner,search`, auth *Bearer*, key = the token.
+
+Try: *"Make a mind map of this paper's argument"*, *"Add a task to project X due Friday"*,
+*"What do my notes say about codebooks?"*. Changes made through MCP appear in an open Chlio tab within ~10 seconds.
+
+**How it stays consistent with the browser:** the saved state has a revision; the browser saves with `If-Match` and
+merges (three-way, per item) if someone else saved first, and polls for outside changes. See `src/utils/stateMerge.ts`.

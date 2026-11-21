@@ -302,6 +302,26 @@ export function createAuth({ db, google, allowedEmails, publicUrl, cookieSecure 
     next();
   }
 
+  /**
+   * Gate for machine endpoints (/mcp): ONLY access tokens are accepted. A browser cookie is deliberately
+   * refused, so a malicious web page can never drive tools with the signed-in user's ambient session.
+   */
+  function tokenGate(req, res, next) {
+    const a = authenticate(req);
+    if (!a || a.kind !== 'token') {
+      if (/^bearer /i.test(req.headers.authorization || '') && !failureLimiter(clientIp(req))) {
+        return res.status(429).json({ jsonrpc: '2.0', error: { code: -32001, message: 'Too many failed attempts' }, id: null });
+      }
+      res.setHeader('WWW-Authenticate', 'Bearer realm="chlio-mcp"');
+      return res.status(401).json({ jsonrpc: '2.0', error: { code: -32001, message: 'A Chlio access token is required (Authorization: Bearer chlio_pat_...)' }, id: null });
+    }
+    if (req.headers.origin && !isSameOrigin(req)) {
+      return res.status(403).json({ jsonrpc: '2.0', error: { code: -32001, message: 'Cross-origin requests are not allowed' }, id: null });
+    }
+    req.auth = a;
+    next();
+  }
+
   // ------------------------------------------------------------ routes (mounted at /api)
   const router = express.Router();
   // NB: no router-wide body parser here. This router is mounted on /api, so a router.use() parser would
@@ -412,5 +432,5 @@ export function createAuth({ db, google, allowedEmails, publicUrl, cookieSecure 
   const getFeedKey = () => getOrCreateSecret('ics_feed_key');
   const checkFeedKey = (presented) => typeof presented === 'string' && safeEqual(presented, getFeedKey());
 
-  return { middleware, router, createAccessToken, signState, verifyState, getFeedKey, checkFeedKey, authenticate, listTokens: () => stmt.listTokens.all(), revokeToken: (id) => stmt.revokeToken.run(now(), id).changes };
+  return { middleware, tokenGate, router, createAccessToken, signState, verifyState, getFeedKey, checkFeedKey, authenticate, listTokens: () => stmt.listTokens.all(), revokeToken: (id) => stmt.revokeToken.run(now(), id).changes };
 }

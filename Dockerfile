@@ -24,6 +24,8 @@ RUN cd server && npm install --omit=dev
 
 COPY --from=builder /app/dist ./dist
 COPY server/*.js ./server/
+# MCP server (server/mcp/*.js). The tests in server/test are deliberately not shipped.
+COPY server/mcp ./server/mcp
 
 ENV CLIO_DATA_DIR=/data
 ENV CLIO_DIST_DIR=/app/dist
