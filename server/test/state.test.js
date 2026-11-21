@@ -71,3 +71,19 @@ test('a conflicting save does not delete uploaded files; a successful one does',
   assert.equal(putBootstrap({ files: [] }, rev).ok, true);
   assert.equal(getFileBlob('f1'), undefined, 'removed once the delete is actually saved');
 });
+
+test('a save from an older client does not drop keys that client does not know about (stale browser tab)', () => {
+  const rev = getBootstrap().revision;
+  const r1 = putBootstrap({ projects: [{ id: 'p1', name: 'A' }], readingList: [{ id: 'paper-1', projectId: 'p1', title: 'Kept', status: 'to-read' }] }, rev);
+  assert.ok(r1.ok);
+  // an old frontend: it never sends `readingList`
+  const r2 = putBootstrap({ projects: [{ id: 'p1', name: 'A renamed' }], activeView: 'home' }, r1.revision);
+  assert.ok(r2.ok);
+  const after = getBootstrap().state;
+  assert.equal(after.projects[0].name, 'A renamed', 'its own edit is saved');
+  assert.deepEqual(after.readingList.map((p) => p.id), ['paper-1'], 'the key it never sent survives');
+  // a current client that deletes everything sends an empty array, which IS a deletion
+  const r3 = putBootstrap({ projects: [{ id: 'p1', name: 'A renamed' }], readingList: [] }, r2.revision);
+  assert.ok(r3.ok);
+  assert.deepEqual(getBootstrap().state.readingList, []);
+});

@@ -115,11 +115,19 @@ export function putBootstrap(incoming, ifMatchRevision) {
   state.nextcloudStatus = 'idle';
   state.nextcloudError = null;
 
+  // `existing` is still accurate when the save happens: the save only succeeds if nothing changed since the check above.
+  const existing = loadStatePayload();
+
+  // A key the client did not send at all is a key that client does not know about (a browser tab still running an older
+  // frontend, e.g. one opened before `readingList` existed). Keep the stored value instead of dropping it: clients always
+  // send every key they know, and deletions are empty arrays, so "absent" can never mean "delete".
+  for (const key of PERSIST_KEYS) {
+    if (incoming[key] === undefined && existing && existing[key] !== undefined) state[key] = existing[key];
+  }
+
   const incomingFileIds = new Set((state.files || []).map((f) => f.id));
 
   // Files that this save removes (their blobs are deleted below, once the save has really happened).
-  // `existing` is still accurate then: the save only succeeds if nothing changed since the check above.
-  const existing = loadStatePayload();
   const removedFileIds = (existing?.files || []).map((f) => f.id).filter((id) => !incomingFileIds.has(id));
 
   // Persist new base64 uploads to disk

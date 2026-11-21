@@ -38,3 +38,11 @@ databases itself.
 - Server tests: 64 pass (new: a reading-list lifecycle test covering add by project name, ID normalisation, duplicate skipping across
   databases, filters, status/notes/move, search, failed calls leaving the state untouched, the 50-per-call limit, read-only token).
 - `stateMerge` test for papers added remotely during a local edit. `tsc` clean.
+
+## Bug found after deploying: a stale browser tab wiped the reading list
+
+Right after the switch, a test paper added through MCP disappeared from the live state. Cause: a browser tab opened before
+the update still ran the old frontend, which does not know the `readingList` key. It saved its whole state without that key and
+the server replaced the stored state with it. Fix (`server/bootstrap.js`): a key the client did not send at all is kept from the
+stored state (clients always send every key they know and delete with empty arrays, so "absent" never means "delete").
+Regression test added (65 server tests). Open tabs pick up the new frontend on reload.
