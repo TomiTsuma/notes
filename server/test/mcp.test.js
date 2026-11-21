@@ -73,6 +73,23 @@ test('/mcp: no token, bad token, and browser cookie sessions are all refused', a
   assert.equal((await fetch(`${base}/mcp`)).status, 405);
 });
 
+test('/mcp accepts the token as X-Chlio-Token too, with the same scope rules', async () => {
+  const connectWith = async (headers) => {
+    const c = new Client({ name: 'test', version: '1' });
+    await c.connect(new StreamableHTTPClientTransport(new URL(`${base}/mcp`), { requestInit: { headers } }));
+    return c;
+  };
+  const rw = await connectWith({ 'X-Chlio-Token': rwToken() });
+  assert.equal((await rw.listTools()).tools.length, 26);
+  const ro = await connectWith({ 'X-Chlio-Token': roToken() });
+  assert.ok(!(await ro.listTools()).tools.some((t) => t.name === 'mindmap_create'), 'read-only scope applies via this header too');
+  const post = (headers) => fetch(`${base}/mcp`, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', ...headers }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) });
+  const bad = await post({ 'x-chlio-token': 'chlio_pat_nope' });
+  assert.equal(bad.status, 401);
+  assert.match((await bad.json()).error.message, /X-Chlio-Token/, 'the 401 tells the user both ways to send the token');
+  await Promise.all([rw.close(), ro.close()]);
+});
+
 test('tools: read-only tokens do not even see write tools; groups narrow the list', async () => {
   const rw = await connect(rwToken());
   const rwNames = (await rw.listTools()).tools.map((t) => t.name);

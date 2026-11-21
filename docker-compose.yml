@@ -1,8 +1,22 @@
+# Chlio: two services built from ONE image (ttsu/chlio).
+#
+#   clio       the frontend (the built app, served as static files) and the REST API. This is the only service that
+#              is published, and the one the Cloudflare tunnel points at (port 4191). It also forwards `/mcp` to
+#              chlio-mcp, so https://chlio.ereuna.org/mcp keeps working with no extra public hostname.
+#   chlio-mcp  the MCP server (Claude Desktop, Open WebUI, ...). Same image, different command. It shares the
+#              data volume (the same SQLite file, hence the same access tokens and state) and serves only /mcp.
+#
+# `docker compose up -d --build` builds the image once (the frontend is built first: `npm ci && npm run build`).
+#
+# Why a separate container: the MCP server can be restarted, resource-limited, logged and (later) exposed
+# independently of the app, and it holds only the secrets it needs. Both services write the same SQLite file in
+# WAL mode, which is safe on one host (the code takes the write lock first, see server/stateStore.js) but would not
+# be on a network filesystem; to run them on different hosts, move the state to Postgres first.
 services:
   clio:
     build: .
-    image: ttsu/chlio
-    container_name: clio-app
+    image: ${CLIO_IMAGE:-ttsu/chlio}
+    container_name: ${CLIO_APP_CONTAINER:-clio-app}
     ports:
       - "${PORT:-4191}:${PORT:-4191}"
     restart: unless-stopped
@@ -13,8 +27,61 @@ services:
       - NODE_ENV=production
       - CLIO_DATA_DIR=/data
       - PORT=${PORT:-4191}
+      # where /mcp is forwarded. Remove this line to run the MCP server inside this process again.
+      - MCP_UPSTREAM=http://chlio-mcp:${MCP_PORT:-4192}
     volumes:
       - clio-data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:${PORT:-4191}/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  chlio-mcp:
+    image: ${CLIO_IMAGE:-ttsu/chlio}
+    container_name: ${CLIO_MCP_CONTAINER:-clio-mcp}
+    command: ["node", "server/mcp-server.js"]
+    restart: unless-stopped
+    depends_on:
+      clio:
+        condition: service_healthy # the API creates/migrates the database first
+    # Explicit variables instead of `env_file: .env`: this container does not need (and should not hold) the
+    # Firebase key, the Nextcloud password, the allowed-emails list, ...
+    environment:
+      - NODE_ENV=production
+      - CLIO_DATA_DIR=/data
+      - MCP_PORT=${MCP_PORT:-4192}
+      - CHLIO_PUBLIC_URL=${CHLIO_PUBLIC_URL:-https://chlio.ereuna.org}
+      # used by the jira_* tools
+      - JIRA_HOST=${JIRA_HOST:-}
+      - JIRA_EMAIL=${JIRA_EMAIL:-}
+      - JIRA_API_TOKEN=${JIRA_API_TOKEN:-}
+      - JIRA_PROJECT_KEY=${JIRA_PROJECT_KEY:-}
+      # used by event_create(add_to_google) to refresh the stored Google Calendar token
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+    volumes:
+      - clio-data:/data
+    # Optional direct access (e.g. over Tailscale): set MCP_BIND=0.0.0.0. Loopback only by default, so the
+    # only public path is /mcp on the app, which forwards here.
+    ports:
+      - "${MCP_BIND:-127.0.0.1}:${MCP_PORT:-4192}:${MCP_PORT:-4192}"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    pids_limit: 256
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:${MCP_PORT:-4192}/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
 volumes:
   clio-data:

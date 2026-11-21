@@ -24,15 +24,32 @@ export function createStateStore(db) {
   /**
    * Atomic read-modify-write for server-side writers (the MCP server). `fn(state)` mutates the parsed state in
    * place and may return a result. If it throws, nothing is saved. Returns { result, revision }.
-   * better-sqlite3 is synchronous, so nothing can interleave between the read and the write.
+   *
+   * IMMEDIATE matters: the API and the MCP server are separate processes sharing this file. A plain (deferred)
+   * transaction reads first and only then asks for the write lock, so two writers could both read revision N and
+   * the second would overwrite the first. IMMEDIATE takes the write lock before the read, so writers queue
+   * (waiting up to the 5 s busy timeout) instead of interleaving.
    */
   function mutateState(fn) {
     return db.transaction(() => {
       const state = loadStatePayload() || {};
       const result = fn(state);
       return { result, revision: saveStatePayload(state) };
-    })();
+    }).immediate();
   }
 
-  return { getStateRevision, loadStatePayload, saveStatePayload, mutateState };
+  /**
+   * Compare-and-swap save for the browser: stores `payload` only if the revision is still `expectedRevision`.
+   * The check and the write happen inside one IMMEDIATE transaction, so no other process can save in between.
+   * Returns { ok: true, revision } or { ok: false, revision } (the current one) on a stale save.
+   */
+  function saveStateIfRevision(payload, expectedRevision) {
+    return db.transaction(() => {
+      const current = getStateRevision();
+      if (current !== expectedRevision) return { ok: false, revision: current };
+      return { ok: true, revision: saveStatePayload(payload) };
+    }).immediate();
+  }
+
+  return { getStateRevision, loadStatePayload, saveStatePayload, saveStateIfRevision, mutateState };
 }

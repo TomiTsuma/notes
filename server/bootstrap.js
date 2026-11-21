@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import {
   loadStatePayload,
-  saveStatePayload,
+  saveStateIfRevision,
   getStateRevision,
   getUploadPath,
   registerFileBlob,
@@ -92,7 +92,11 @@ export function getBootstrap() {
  * Saves the state sent by the browser, but only if it was based on the current revision
  * (`ifMatchRevision`). Otherwise something else (the MCP server, another tab) changed the state since,
  * and a blind overwrite would silently destroy that change: return { conflict: true } with the current
- * state so the client can merge. All of this is synchronous, so the check-then-write is atomic.
+ * state so the client can merge.
+ *
+ * The API and the MCP server are separate processes sharing one SQLite file, so the final check-and-write is a
+ * single IMMEDIATE transaction (saveStateIfRevision); the early check below only avoids useless work. Files of
+ * removed notes are deleted only AFTER that save succeeded, so a refused save never deletes anything.
  */
 export function putBootstrap(incoming, ifMatchRevision) {
   const currentRevision = getStateRevision();
@@ -113,15 +117,10 @@ export function putBootstrap(incoming, ifMatchRevision) {
 
   const incomingFileIds = new Set((state.files || []).map((f) => f.id));
 
-  // Remove blobs for deleted files
+  // Files that this save removes (their blobs are deleted below, once the save has really happened).
+  // `existing` is still accurate then: the save only succeeds if nothing changed since the check above.
   const existing = loadStatePayload();
-  if (existing?.files) {
-    for (const f of existing.files) {
-      if (!incomingFileIds.has(f.id) && fileBlobExists(f.id)) {
-        deleteFileBlob(f.id);
-      }
-    }
-  }
+  const removedFileIds = (existing?.files || []).map((f) => f.id).filter((id) => !incomingFileIds.has(id));
 
   // Persist new base64 uploads to disk
   if (Array.isArray(state.files)) {
@@ -139,8 +138,14 @@ export function putBootstrap(incoming, ifMatchRevision) {
     });
   }
 
-  const revision = saveStatePayload(state);
-  return { ok: true, revision };
+  const saved = saveStateIfRevision(state, ifMatchRevision);
+  if (!saved.ok) {
+    return { conflict: true, ...getBootstrap() };
+  }
+  for (const id of removedFileIds) {
+    if (fileBlobExists(id)) deleteFileBlob(id);
+  }
+  return { ok: true, revision: saved.revision };
 }
 
 export function getFileContent(fileId) {

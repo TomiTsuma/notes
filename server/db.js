@@ -16,7 +16,7 @@ db.pragma('journal_mode = WAL');
 initSchema(db);
 
 const stateStore = createStateStore(db);
-export const { getStateRevision, loadStatePayload, saveStatePayload, mutateState } = stateStore;
+export const { getStateRevision, loadStatePayload, saveStatePayload, saveStateIfRevision, mutateState } = stateStore;
 
 export { db, DATA_DIR, UPLOADS_DIR, DB_PATH };
 

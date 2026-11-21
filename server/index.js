@@ -13,8 +13,9 @@ import fs from 'fs';
 import http from 'http';
 import https from 'https';
 import { getBootstrap, putBootstrap, getFileContent, saveFileContent } from './bootstrap.js';
-import { db, deleteFileBlob, getStateRevision, loadStatePayload, mutateState } from './db.js';
-import { createMcpHandler } from './mcp/handler.js';
+import { db, deleteFileBlob, getStateRevision } from './db.js';
+import { buildMcpHandler } from './mcp/wire.js';
+import { createMcpProxy } from './mcpProxy.js';
 import { createAuth, createGoogleClient, parseAllowedEmails } from './auth.js';
 import {
   getJiraConfig,
@@ -86,23 +87,20 @@ app.use('/api', auth.middleware);
 app.use('/api', auth.router);
 
 // MCP server (Claude Desktop, Open WebUI, ...). Access tokens only; see server/mcp/.
-const mcpHandler = createMcpHandler({
-  store: { read: () => loadStatePayload() || {}, mutate: mutateState },
-  deps: {
-    createGoogleEvent: (e) => createGoogleCalendarEvent(e),
-    jira: {
-      getIssues: () => getJiraIssues(),
-      createIssue: (d) => createJiraIssue(d),
-      transition: (key, to) => transitionJiraIssue(key, to),
-      comment: (key, body) => addJiraComment(key, body),
-    },
-  },
-});
-app.post('/mcp', auth.tokenGate, express.json({ limit: '2mb' }), mcpHandler);
-app.all('/mcp', (_req, res) => {
-  res.setHeader('Allow', 'POST');
-  res.status(405).json({ jsonrpc: '2.0', error: { code: -32000, message: 'Method not allowed: this MCP server is stateless, use POST' }, id: null });
-});
+// Two ways to run it, same public address:
+//   MCP_UPSTREAM set   -> it runs as its own service (docker-compose `chlio-mcp`, server/mcp-server.js) and this
+//                         process just forwards /mcp to it; the MCP service does the token check;
+//   MCP_UPSTREAM unset -> it runs inside this process (the original single-container mode).
+if (process.env.MCP_UPSTREAM) {
+  app.all('/mcp', createMcpProxy(process.env.MCP_UPSTREAM));
+  console.log(`[mcp] forwarding /mcp to ${process.env.MCP_UPSTREAM}`);
+} else {
+  app.post('/mcp', auth.tokenGate, express.json({ limit: '2mb' }), buildMcpHandler());
+  app.all('/mcp', (_req, res) => {
+    res.setHeader('Allow', 'POST');
+    res.status(405).json({ jsonrpc: '2.0', error: { code: -32000, message: 'Method not allowed: this MCP server is stateless, use POST' }, id: null });
+  });
+}
 
 app.use(express.json({ limit: '50mb' }));
 
@@ -261,6 +259,7 @@ app.use('/api/nextcloud', (req, res) => {
     // Never forward Chlio's own credentials to the Nextcloud server (or whatever host was requested).
     delete proxyHeaders.cookie;
     delete proxyHeaders['x-chlio-request'];
+    delete proxyHeaders['x-chlio-token'];
     delete proxyHeaders.origin;
     if (/^bearer\s+chlio_pat_/i.test(String(proxyHeaders.authorization || ''))) delete proxyHeaders.authorization;
     proxyHeaders.host = targetParsed.host;

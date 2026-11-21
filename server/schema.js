@@ -59,6 +59,11 @@ export function initSchema(db) {
   // must present the revision it last saw (If-Match) and the MCP server writes through mutateState().
   const cols = db.prepare('PRAGMA table_info(app_state)').all().map((c) => c.name);
   if (!cols.includes('revision')) {
-    db.exec('ALTER TABLE app_state ADD COLUMN revision INTEGER NOT NULL DEFAULT 0');
+    try {
+      db.exec('ALTER TABLE app_state ADD COLUMN revision INTEGER NOT NULL DEFAULT 0');
+    } catch (err) {
+      // the API and MCP containers can start at the same moment; if the other one added it first that is fine
+      if (!/duplicate column name/i.test(String(err.message))) throw err;
+    }
   }
 }

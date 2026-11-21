@@ -174,6 +174,22 @@ test('read-only tokens cannot write; no token can mint or revoke tokens', async 
   assert.equal((await req(`/api/tokens/${rw.id}`, { method: 'DELETE', headers: bearer(rw.token) })).status, 403);
 });
 
+test('tokens can also be sent as X-Chlio-Token (for clients that may not use the Authorization header name)', async () => {
+  const rw = auth.createAccessToken({ name: 'x-header-rw' });
+  const ro = auth.createAccessToken({ name: 'x-header-ro', scope: 'read' });
+  const xt = (t) => ({ 'x-chlio-token': t });
+  assert.equal((await req('/api/bootstrap', { headers: xt(rw.token) })).status, 200);
+  assert.equal((await req('/api/bootstrap', { headers: xt(`Bearer ${rw.token}`) })).status, 200, 'a pasted "Bearer " prefix is tolerated');
+  assert.equal((await req('/api/bootstrap', { headers: xt('chlio_pat_' + 'y'.repeat(43)) })).status, 401);
+  assert.equal((await req('/api/bootstrap', { headers: xt('not-a-token') })).status, 401);
+  assert.equal((await req('/api/bootstrap', { headers: xt('') })).status, 401, 'an empty header is no credential');
+  // the same rules apply as for Authorization: read-only stays read-only, tokens cannot mint tokens, revocation works
+  assert.equal((await req('/api/bootstrap', { method: 'PUT', headers: { ...json, ...xt(ro.token) }, body: {} })).status, 403);
+  assert.equal((await req('/api/tokens', { method: 'POST', headers: { ...json, ...xt(rw.token) }, body: { name: 'evil' } })).status, 403);
+  assert.equal(auth.revokeToken(rw.id), 1);
+  assert.equal((await req('/api/bootstrap', { headers: xt(rw.token) })).status, 401);
+});
+
 test('a large state save (multi-MB) is not rejected by the auth router', async () => {
   const rw = auth.createAccessToken({ name: 'big' });
   const blob = { notes: 'x'.repeat(3 * 1024 * 1024) };

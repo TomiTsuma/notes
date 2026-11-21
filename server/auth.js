@@ -7,7 +7,7 @@
  *                 popup, so it also works on iPad Safari / Home-Screen PWAs) -> HttpOnly session cookie.
  *                 A cookie is required (not a bearer header) so <img>/PDF loads of /api/files/* work.
  *  2. Machines -> personal access tokens ("chlio_pat_...") created by a signed-in user in the UI (or by
- *                 the CLI on the host). Used as `Authorization: Bearer ...` by Claude Desktop,
+ *                 the CLI on the host). Used as `Authorization: Bearer ...` (or `X-Chlio-Token: ...`) by Claude Desktop,
  *                 Open WebUI, scripts. Long-lived, named, revocable, optionally read-only.
  *
  * Authorisation: a verified Google email must be in CHLIO_ALLOWED_EMAILS. If that variable is empty
@@ -34,6 +34,20 @@ function safeEqual(a, b) {
   const ab = Buffer.from(String(a));
   const bb = Buffer.from(String(b));
   return ab.length === bb.length && crypto.timingSafeEqual(ab, bb);
+}
+
+/**
+ * The machine credential, or null if the request carries none. It may arrive as `Authorization: Bearer <token>`
+ * or, for clients that are not allowed to use the Authorization header name (e.g. Claude Desktop's custom
+ * connector dialog reserves it while sign-in is on), as `X-Chlio-Token: <token>`. Either way it is the same
+ * `chlio_pat_...` token, checked the same way.
+ */
+export function presentedToken(req) {
+  const auth = req.headers.authorization || '';
+  if (/^bearer /i.test(auth)) return auth.slice(7).trim();
+  const x = req.headers['x-chlio-token'];
+  if (typeof x === 'string' && x.trim()) return x.trim().replace(/^bearer\s+/i, '');
+  return null;
 }
 
 export function parseCookies(header) {
@@ -233,9 +247,8 @@ export function createAuth({ db, google, allowedEmails, publicUrl, cookieSecure 
   // ------------------------------------------------------------ resolving the caller
   /** Returns { kind:'session'|'token', user:{email,name,picture}, scope, tokenId? } or null. */
   function authenticate(req) {
-    const header = req.headers.authorization || '';
-    if (/^bearer /i.test(header)) {
-      const presented = header.slice(7).trim();
+    const presented = presentedToken(req);
+    if (presented !== null) {
       if (!presented.startsWith(TOKEN_PREFIX)) return null;
       const row = stmt.getTokenByHash.get(sha256(presented));
       if (!row || row.revoked_at || (row.expires_at && row.expires_at < now())) return null;
@@ -280,7 +293,7 @@ export function createAuth({ db, google, allowedEmails, publicUrl, cookieSecure 
     if (PUBLIC.has(`${req.method} ${path}`)) return next();
 
     if (!req.auth) {
-      if (/^bearer /i.test(req.headers.authorization || '') && !failureLimiter(clientIp(req))) {
+      if (presentedToken(req) !== null && !failureLimiter(clientIp(req))) {
         return res.status(429).json({ error: 'Too many failed attempts' });
       }
       res.setHeader('WWW-Authenticate', 'Bearer realm="chlio"');
@@ -309,11 +322,11 @@ export function createAuth({ db, google, allowedEmails, publicUrl, cookieSecure 
   function tokenGate(req, res, next) {
     const a = authenticate(req);
     if (!a || a.kind !== 'token') {
-      if (/^bearer /i.test(req.headers.authorization || '') && !failureLimiter(clientIp(req))) {
+      if (presentedToken(req) !== null && !failureLimiter(clientIp(req))) {
         return res.status(429).json({ jsonrpc: '2.0', error: { code: -32001, message: 'Too many failed attempts' }, id: null });
       }
       res.setHeader('WWW-Authenticate', 'Bearer realm="chlio-mcp"');
-      return res.status(401).json({ jsonrpc: '2.0', error: { code: -32001, message: 'A Chlio access token is required (Authorization: Bearer chlio_pat_...)' }, id: null });
+      return res.status(401).json({ jsonrpc: '2.0', error: { code: -32001, message: 'A Chlio access token is required (Authorization: Bearer chlio_pat_..., or X-Chlio-Token: chlio_pat_...)' }, id: null });
     }
     if (req.headers.origin && !isSameOrigin(req)) {
       return res.status(403).json({ jsonrpc: '2.0', error: { code: -32001, message: 'Cross-origin requests are not allowed' }, id: null });

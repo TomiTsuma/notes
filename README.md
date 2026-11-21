@@ -139,3 +139,37 @@ Try: *"Make a mind map of this paper's argument"*, *"Add a task to project X due
 
 **How it stays consistent with the browser:** the saved state has a revision; the browser saves with `If-Match` and
 merges (three-way, per item) if someone else saved first, and polls for outside changes. See `src/utils/stateMerge.ts`.
+
+## Docker Compose: the app and the MCP server as separate services
+
+`docker-compose.yml` defines two services built from **one image** (`ttsu/chlio`):
+
+| Service | Container | Runs | Published |
+|---|---|---|---|
+| `clio` | `clio-app` | the built frontend (static files) and the REST API: `node server/index.js` | `PORT` (4191), the one the Cloudflare tunnel points at |
+| `chlio-mcp` | `clio-mcp` | the MCP server only: `node server/mcp-server.js` (serves `/mcp` and `/healthz`) | `127.0.0.1:MCP_PORT` (4192) only |
+
+`/mcp` on the public address still works unchanged: the app forwards it to `chlio-mcp` (`MCP_UPSTREAM`), and the MCP
+service does the token check. If the MCP container is down, `/mcp` answers `502` and everything else keeps working.
+Remove `MCP_UPSTREAM` from the `clio` service to run the MCP server inside the app process again.
+
+```sh
+npm ci && npm run build        # the Dockerfile copies the pre-built ./dist (build with your .env so VITE_* defaults are baked in)
+docker compose up -d --build   # builds the image once; chlio-mcp starts after clio is healthy
+docker compose ps              # both should say (healthy)
+```
+
+- **Shared state:** both containers mount the `clio-data` volume, so they read and write the same SQLite file (state,
+  access tokens). Writes take the lock first (`server/stateStore.js`: IMMEDIATE transactions and an atomic revision
+  compare-and-swap), tested with 6 separate processes writing at once. This is safe on one host. SQLite in WAL mode
+  must not be on a network filesystem; to run the services on different hosts, move the state to Postgres first.
+- **Least privilege:** `chlio-mcp` gets only the variables it needs (Jira, Google client for calendar refresh), not the whole
+  `.env` (no Firebase key, no Nextcloud password, no allowed-emails list). It runs with a read-only root filesystem, no Linux
+  capabilities, `no-new-privileges`, 512 MB and 256 processes.
+- **Variables** (all optional): `PORT`, `MCP_PORT`, `MCP_BIND` (set `0.0.0.0` to reach the MCP service directly, e.g. over
+  Tailscale), `CLIO_IMAGE` (image name, default `ttsu/chlio`), `CLIO_APP_CONTAINER` / `CLIO_MCP_CONTAINER` (container names).
+  Running a second copy for testing? Set `CLIO_IMAGE`, the two container names and the ports, and use `docker compose -p <name>`;
+  otherwise the test build re-tags your production image.
+- **Claude Desktop custom connector:** if the dialog refuses the header name `Authorization` ("reserved when sign-in is
+  enabled"), turn sign-in off for the connector, or use the header **`X-Chlio-Token`** with the bare token as its value
+  (no `Bearer`). Chlio accepts the token in either header.
