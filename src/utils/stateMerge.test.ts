@@ -141,3 +141,17 @@ test('property: edits to DIFFERENT items on both sides always combine (300 rando
     assert.deepEqual(byId(merged), byId([...expected.values()]), `seed ${seed}`);
   }
 });
+
+test('reading list: papers added by the MCP server survive a browser save, and a status change made in the browser survives a refresh', () => {
+  const paper = (id: string, status = 'to-read') => ({ id, projectId: 'p1', title: id, authors: '', status, addedAt: 't' });
+  const base: Snapshot = { readingList: [paper('a')] };
+  // Claude adds two papers on the server while the user marks paper `a` as read in the browser
+  const remote: Snapshot = { readingList: [paper('a'), paper('b'), paper('c')] };
+  const local: Snapshot = { readingList: [paper('a', 'read')] };
+  const merged = mergeStates(base, local, remote).readingList as Array<{ id: string; status: string }>;
+  assert.deepEqual(ids(merged), ['a', 'b', 'c'], 'the papers Claude added are kept');
+  assert.equal(merged.find((p) => p.id === 'a')!.status, 'read', "the user's status change is kept");
+  // the user removes a paper locally, the server meanwhile added another: both are respected
+  const local2: Snapshot = { readingList: [] };
+  assert.deepEqual(ids(mergeStates(base, local2, remote).readingList), ['b', 'c']);
+});

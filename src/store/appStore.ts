@@ -47,6 +47,26 @@ export interface Paper {
   doi?: string;
 }
 
+/** A paper on a project's reading list (added by hand or through the Chlio MCP `paper_add` tool). */
+export type ReadingStatus = 'to-read' | 'reading' | 'read';
+export interface ReadingItem {
+  id: string;
+  projectId: string | null;
+  title: string;
+  authors: string;
+  year?: number;
+  venue?: string;
+  url?: string;
+  doi?: string;
+  arxivId?: string;
+  abstract?: string;
+  source?: string; // database it was found in (arXiv, OpenAlex, PubMed, ...)
+  tags?: string[];
+  notes?: string;
+  status: ReadingStatus;
+  addedAt: string;
+}
+
 export interface Folder {
   id: string;
   name: string;
@@ -220,6 +240,7 @@ export interface AppState {
   annotations: Record<string, DocumentAnnotations>;
   
   papers: Paper[];
+  readingList: ReadingItem[];
   tags: Tag[];
   tagSearchQuery: string;
   nextcloudUrl: string;
@@ -317,6 +338,8 @@ export interface AppState {
   deleteMindMapBoard: (id: string) => void;
   setSelectedProjectId: (id: string | null) => void;
   addProject: (project: Project) => void;
+  updateReadingItem: (id: string, patch: Partial<ReadingItem>) => void;
+  removeReadingItem: (id: string) => void;
   deleteProject: (id: string) => void;
   updateProject: (id: string, project: Partial<Project>) => void;
   mergeJiraProjects: (projects: { id: string; key: string; name: string; avatarUrl?: string }[], host?: string) => void;
@@ -354,6 +377,7 @@ export function getPersistedSnapshot(state: AppState): Record<string, unknown> {
     activeDocumentId: state.activeDocumentId,
     annotations: state.annotations,
     papers: state.papers,
+    readingList: state.readingList,
     tags: state.tags,
     tagSearchQuery: state.tagSearchQuery,
     nextcloudUrl: state.nextcloudUrl,
@@ -409,6 +433,7 @@ export const useAppStore = create<AppState>()((set) => ({
       annotations: {},
       isRecording: false,
       showRightPanel: true,
+      readingList: [],
       
       papers: [
         { id: '1', title: 'Attention Is All You Need', authors: 'Vaswani et al.' },
@@ -799,7 +824,10 @@ export const useAppStore = create<AppState>()((set) => ({
       setActiveView: (view) => set({ activeView: view }),
       setSelectedProjectId: (id) => set({ selectedProjectId: id }),
       addProject: (project) => set(state => ({ projects: [...state.projects, project] })),
+      updateReadingItem: (id, patch) => set(state => ({ readingList: state.readingList.map(r => r.id === id ? { ...r, ...patch } : r) })),
+      removeReadingItem: (id) => set(state => ({ readingList: state.readingList.filter(r => r.id !== id) })),
       deleteProject: (id) => set(state => ({
+        readingList: state.readingList.map(r => r.projectId === id ? { ...r, projectId: null } : r),
         projects: state.projects.filter(p => p.id !== id),
         kanbanTasks: state.kanbanTasks.filter(t => t.projectId !== id),
         files: state.files.map(f => f.projectId === id ? { ...f, projectId: null } : f),

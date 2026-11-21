@@ -2,7 +2,7 @@
  * Chlio MCP tools.
  *
  * Tools are grouped so a client can load only what it needs (every tool's schema is sent to the model with
- * every message, so a small local model should not get all of them): mindmaps, planner, notes, jira, search.
+ * every message, so a small local model should not get all of them): mindmaps, planner, notes, papers, jira, search.
  * Select groups with `/mcp?groups=mindmaps,planner` (default: all).
  *
  * Writes go through store.mutate(), which is an atomic read-modify-write that bumps the state revision, so
@@ -28,7 +28,7 @@ import {
   newEdgeId,
 } from './mindmap.js';
 
-export const GROUPS = ['mindmaps', 'planner', 'notes', 'jira', 'search'];
+export const GROUPS = ['mindmaps', 'planner', 'notes', 'papers', 'jira', 'search'];
 
 class UserError extends Error {}
 
@@ -65,6 +65,30 @@ function findNode(board, nodeId) {
 const touch = (board) => {
   board.updatedAt = new Date().toISOString();
 };
+
+/** Finds a project by id, exact name, or a unique case-insensitive part of its name ("ereuna"). */
+function findProject(state, ref) {
+  const projects = list(state, 'projects');
+  const r = String(ref || '').trim().toLowerCase();
+  const exact = projects.find((p) => p.id === ref) || projects.find((p) => String(p.name).toLowerCase() === r);
+  if (exact) return exact;
+  const partial = projects.filter((p) => r && String(p.name).toLowerCase().includes(r));
+  if (partial.length === 1) return partial[0];
+  if (partial.length > 1) throw new UserError(`"${ref}" matches several projects: ${partial.map((p) => `"${p.name}" [${p.id}]`).join(', ')}. Use an id.`);
+  const names = projects.map((p) => `"${p.name}" [${p.id}]`).join(', ') || 'none yet (use project_create)';
+  throw new UserError(`No project "${ref}". Existing projects: ${names}.`);
+}
+
+// Identity of a paper, so adding the same paper twice (from two databases, or in two searches) does not duplicate it.
+const normDoi = (d) => String(d || '').trim().toLowerCase().replace(/^https?:\/\/(dx\.)?doi\.org\//, '').replace(/^doi:\s*/, '');
+const normArxiv = (a) => String(a || '').trim().toLowerCase().replace(/^https?:\/\/arxiv\.org\/(abs|pdf)\//, '').replace(/^arxiv:\s*/, '').replace(/\.pdf$/, '').replace(/v\d+$/, '');
+const normTitle = (t) => String(t || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+function sameProjectItem(a, b) {
+  if (normDoi(a.doi) && normDoi(a.doi) === normDoi(b.doi)) return true;
+  if (normArxiv(a.arxivId) && normArxiv(a.arxivId) === normArxiv(b.arxivId)) return true;
+  return normTitle(a.title).length > 10 && normTitle(a.title) === normTitle(b.title);
+}
+const describePaper = (r) => `[${r.status}] ${r.title}${r.authors ? ` - ${r.authors}` : ''}${r.year ? ` (${r.year})` : ''} [${r.id}]${r.doi ? ` doi:${r.doi}` : ''}${r.arxivId ? ` arXiv:${r.arxivId}` : ''}`;
 
 function projectName(state, projectId) {
   return list(state, 'projects').find((p) => p.id === projectId)?.name;
@@ -516,6 +540,96 @@ export function registerTools(server, { scope, groups, store, deps = {} }) {
     return text(`Commented on ${issue_key}.`);
   });
 
+  // ============================================================================================= papers (reading list)
+  const READING = ['to-read', 'reading', 'read'];
+  const paperInput = z.object({
+    title: z.string().min(1).max(500),
+    authors: z.union([z.string().max(2000), z.array(z.string().max(200)).max(100)]).optional().describe('"A. Author, B. Author" or a list'),
+    year: z.number().int().min(1400).max(2100).optional(),
+    venue: z.string().max(300).optional().describe('journal / conference / preprint server'),
+    url: z.string().url().max(2000).refine((u) => /^https?:\/\//i.test(u), 'must be an http(s) link').optional(),
+    doi: z.string().max(200).optional(),
+    arxiv_id: z.string().max(60).optional(),
+    abstract: z.string().max(6000).optional(),
+    source: z.string().max(60).optional().describe('database it was found in, e.g. arXiv, OpenAlex, PubMed, Semantic Scholar'),
+    tags: z.array(z.string().max(40)).max(10).optional(),
+    notes: z.string().max(4000).optional().describe('why it matters / what to look for'),
+  });
+
+  tool('papers', 'paper_add', {
+    title: 'Add papers to a project reading list', write: true,
+    description: 'Add one or more papers to a project\'s reading list (visible on the Chlio project page). Pass the metadata you found (title, authors, year, DOI or arXiv id, URL, abstract). Papers already on that project\'s list (same DOI, arXiv id or title) are skipped, so it is safe to re-run a search and add the results again. Up to 50 per call.',
+    input: {
+      project: z.string().describe('project name (e.g. "Ereuna") or id; see projects_list'),
+      papers: z.array(paperInput).min(1).max(50),
+      status: z.enum(READING).optional().describe('default to-read'),
+    },
+  }, async ({ project, papers, status }) => mutate((state) => {
+    const proj = findProject(state, project);
+    const items = list(state, 'readingList');
+    const added = [];
+    const skipped = [];
+    for (const p of papers) {
+      const item = {
+        id: id('paper'), projectId: proj.id, title: p.title.trim().replace(/\s+/g, ' '),
+        authors: (Array.isArray(p.authors) ? p.authors.join(', ') : p.authors || '').trim(),
+        ...(p.year ? { year: p.year } : {}), ...(p.venue ? { venue: p.venue.trim() } : {}), ...(p.url ? { url: p.url } : {}),
+        ...(p.doi ? { doi: normDoi(p.doi) } : {}), ...(p.arxiv_id ? { arxivId: normArxiv(p.arxiv_id) } : {}),
+        ...(p.abstract ? { abstract: p.abstract.trim() } : {}), ...(p.source ? { source: p.source.trim() } : {}),
+        ...(p.tags?.length ? { tags: p.tags.map((t) => t.trim()).filter(Boolean) } : {}), ...(p.notes ? { notes: p.notes.trim() } : {}),
+        status: status || 'to-read', addedAt: new Date().toISOString(),
+      };
+      const dup = items.find((x) => x.projectId === proj.id && sameProjectItem(x, item));
+      if (dup) { skipped.push(`"${item.title}" (already on the list [${dup.id}])`); continue; }
+      items.push(item);
+      added.push(item);
+    }
+    return text(`Added ${added.length} paper(s) to "${proj.name}" [${proj.id}], skipped ${skipped.length} duplicate(s).` +
+      (added.length ? `\nAdded:\n${added.map((r) => `- ${describePaper(r)}`).join('\n')}` : '') +
+      (skipped.length ? `\nSkipped:\n${skipped.map((x) => `- ${x}`).join('\n')}` : ''));
+  }));
+
+  tool('papers', 'papers_list', {
+    title: 'List a reading list',
+    description: 'List papers on reading lists. Filter by project (name or id), status (to-read|reading|read) or a text query over title, authors, abstract, tags and notes. Use it before paper_add to see what is already collected.',
+    input: { project: z.string().optional(), status: z.enum(READING).optional(), query: z.string().optional(), limit: z.number().int().min(1).max(200).optional() },
+  }, async ({ project, status, query, limit }) => {
+    const s = store.read();
+    const pid = project ? findProject(s, project).id : null;
+    const q = (query || '').toLowerCase();
+    const all = list(s, 'readingList').filter((r) => (!pid || r.projectId === pid) && (!status || r.status === status) &&
+      (!q || [r.title, r.authors, r.abstract, r.notes, ...(r.tags || [])].filter(Boolean).join(' ').toLowerCase().includes(q)));
+    if (!all.length) return text('No matching papers on the reading list.');
+    const rows = all.slice(0, limit || 100);
+    return text(`${all.length} paper(s)${all.length > rows.length ? `, showing ${rows.length}` : ''}:\n` +
+      rows.map((r) => `- ${describePaper(r)}${pid ? '' : `, project ${projectName(s, r.projectId) || 'none'}`}`).join('\n'));
+  });
+
+  tool('papers', 'paper_update', {
+    title: 'Update a paper on a reading list', write: true,
+    description: 'Change a paper\'s reading status, notes or tags, or move it to another project. Pass notes="" to clear the notes.',
+    input: { paper_id: z.string(), status: z.enum(READING).optional(), notes: z.string().max(4000).optional(), tags: z.array(z.string().max(40)).max(10).optional(), project: z.string().optional().describe('move to this project') },
+  }, async (a) => mutate((state) => {
+    const r = list(state, 'readingList').find((x) => x.id === a.paper_id);
+    if (!r) throw new UserError(`No paper "${a.paper_id}". Call papers_list to see ids.`);
+    if (a.status !== undefined) r.status = a.status;
+    if (a.notes !== undefined) { if (a.notes.trim()) r.notes = a.notes.trim(); else delete r.notes; }
+    if (a.tags !== undefined) r.tags = a.tags.map((t) => t.trim()).filter(Boolean);
+    if (a.project !== undefined) r.projectId = findProject(state, a.project).id;
+    return text(`Updated: ${describePaper(r)}`);
+  }));
+
+  tool('papers', 'paper_remove', {
+    title: 'Remove papers from a reading list', write: true, destructive: true,
+    description: 'Remove papers from the reading list by id.', input: { paper_ids: z.array(z.string()).min(1).max(50) },
+  }, async ({ paper_ids }) => mutate((state) => {
+    const items = list(state, 'readingList');
+    const gone = items.filter((r) => paper_ids.includes(r.id));
+    if (!gone.length) throw new UserError('None of those ids are on a reading list. Call papers_list.');
+    state.readingList = items.filter((r) => !paper_ids.includes(r.id));
+    return text(`Removed ${gone.length} paper(s): ${gone.map((r) => `"${r.title}"`).join(', ')}.`);
+  }));
+
   // ============================================================================================= search
   tool('search', 'chlio_search', {
     title: 'Search everything in Chlio',
@@ -534,6 +648,7 @@ export function registerTools(server, { scope, groups, store, deps = {} }) {
     for (const e of list(s, 'calendarEvents')) if (has(e.title, e.description)) hits.push(`event: ${e.date} ${e.title} [${e.id}]`);
     for (const p of list(s, 'projects')) if (has(p.name, p.description)) hits.push(`project: ${p.name} [${p.id}]`);
     for (const p of list(s, 'papers')) if (has(p.title, p.authors)) hits.push(`paper: ${p.title} (${p.authors})`);
+    for (const r of list(s, 'readingList')) if (has(r.title, r.authors, r.abstract, r.notes, ...(r.tags || []))) hits.push(`reading list: [${r.status}] ${r.title} [${r.id}]`);
     for (const f of list(s, 'files')) {
       if (has(f.name)) hits.push(`note: ${f.name} [${f.id}]`);
       if (f.type === 'notebook') for (const pg of pageTexts(s, f)) if (has(pg.typed, ...pg.floating)) hits.push(`note text: ${f.name} [${f.id}] page ${pg.page}`);

@@ -117,7 +117,7 @@ the sign-in routes and the secret-keyed calendar feed are public.
 
 `POST https://<host>/mcp`: Streamable HTTP, stateless, **access tokens only** (create one under Account ->
 Access tokens; a browser session is refused). Pick tool groups with `?groups=`: `mindmaps`, `planner`, `notes`,
-`jira`, `search` (default all, about 4.2k tokens of tool schema; `mindmaps` alone is about 1.7k). A read-only token
+`papers`, `jira`, `search` (default all, about 5k tokens of tool schema; `mindmaps` alone is about 1.7k; `papers` about 1.2k). A read-only token
 sees only the read tools. Full tool list and design: `docs/changelog/*_mcp_server_changelog.md`.
 
 **Claude Desktop** (`claude_desktop_config.json`; keep spaces out of the argument, the header comes from `env`):
@@ -135,7 +135,10 @@ sees only the read tools. Full tool list and design: `docs/changelog/*_mcp_serve
 `https://chlio.ereuna.org/mcp?groups=mindmaps,planner,search`, auth *Bearer*, key = the token.
 
 Try: *"Make a mind map of this paper's argument"*, *"Add a task to project X due Friday"*,
-*"What do my notes say about codebooks?"*. Changes made through MCP appear in an open Chlio tab within ~10 seconds.
+*"What do my notes say about codebooks?"*,
+*"Search arXiv and OpenAlex for papers on graph tokenisation and add the best 10 to the Ereuna reading list"*
+(the `papers` group: `paper_add`, `papers_list`, `paper_update`, `paper_remove`; duplicates by DOI, arXiv id or title are
+skipped; the list shows on the project page). Changes made through MCP appear in an open Chlio tab within ~10 seconds.
 
 **How it stays consistent with the browser:** the saved state has a revision; the browser saves with `If-Match` and
 merges (three-way, per item) if someone else saved first, and polls for outside changes. See `src/utils/stateMerge.ts`.

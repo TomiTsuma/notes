@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useAppStore } from '../../store/appStore';
+import { useAppStore, type ReadingItem, type ReadingStatus } from '../../store/appStore';
 import { v4 as uuidv4 } from 'uuid';
 import {
   fetchJiraConfig,
@@ -30,11 +30,77 @@ import {
   PROJECT_COLORS,
 } from '../UI/clio';
 
+const NEXT_STATUS = { 'to-read': 'reading', reading: 'read', read: 'to-read' } as const;
+const STATUS_LABEL = { 'to-read': 'To read', reading: 'Reading', read: 'Read' } as const;
+const safeHttp = (u?: string) => (u && /^https?:\/\//i.test(u) ? u : undefined);
+
+/** A project's reading list: papers added by hand or by an AI client through the Chlio MCP `paper_add` tool. */
+const ReadingList: React.FC<{
+  items: ReadingItem[];
+  onStatus: (id: string, status: ReadingStatus) => void;
+  onRemove: (id: string) => void;
+}> = ({ items, onStatus, onRemove }) => {
+  const [filter, setFilter] = useState<'all' | ReadingStatus>('all');
+  const shown = items.filter((r) => filter === 'all' || r.status === filter);
+  const count = (s: ReadingStatus) => items.filter((r) => r.status === s).length;
+  return (
+    <div style={{ marginTop: 24 }}>
+      <SectionHeader title={`Reading list (${items.length})`} icon="file" />
+      {items.length === 0 ? (
+        <p style={{ fontSize: 13, color: 'var(--ink-2)', margin: '8px 0' }}>
+          No papers yet. Ask Claude (with the Chlio MCP connected) to search for papers and add them to this project.
+        </p>
+      ) : (
+        <>
+          <div className="cl-row" style={{ gap: 8, margin: '8px 0 12px', flexWrap: 'wrap' }}>
+            {(['all', 'to-read', 'reading', 'read'] as const).map((f) => (
+              <Button key={f} size="sm" variant={filter === f ? 'primary' : 'ghost'} onClick={() => setFilter(f)}>
+                {f === 'all' ? `All ${items.length}` : `${STATUS_LABEL[f]} ${count(f)}`}
+              </Button>
+            ))}
+          </div>
+          <div className="cl-col" style={{ gap: 0 }}>
+            {shown.map((r) => {
+              const href = safeHttp(r.url) || (r.doi ? `https://doi.org/${r.doi}` : r.arxivId ? `https://arxiv.org/abs/${r.arxivId}` : undefined);
+              return (
+                <div key={r.id} className="cl-row" style={{ justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'nowrap', gap: 12, padding: '10px 0', borderTop: '1px solid var(--line)' }}>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <b style={{ fontSize: 13, display: 'block' }}>
+                      {href ? <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit' }}>{r.title}</a> : r.title}
+                    </b>
+                    <div className="cl-faint" style={{ fontSize: 12, marginTop: 2 }}>
+                      {[r.authors, r.year, r.venue, r.source && `via ${r.source}`].filter(Boolean).join(' · ')}
+                    </div>
+                    {r.abstract && (
+                      <div style={{ fontSize: 12, color: 'var(--ink-2)', marginTop: 4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{r.abstract}</div>
+                    )}
+                    {r.notes && <div style={{ fontSize: 12, marginTop: 4, fontStyle: 'italic' }}>{r.notes}</div>}
+                    {r.tags && r.tags.length > 0 && (
+                      <div className="cl-row" style={{ gap: 4, marginTop: 4, flexWrap: 'wrap' }}>{r.tags.map((t) => <Tag key={t}>{t}</Tag>)}</div>
+                    )}
+                  </div>
+                  <div className="cl-row" style={{ gap: 6, flexWrap: 'nowrap' }}>
+                    <Button size="sm" title="Click to change status" onClick={() => onStatus(r.id, NEXT_STATUS[r.status])}>{STATUS_LABEL[r.status]}</Button>
+                    <IconButton icon="trash" label="Remove from reading list" onClick={() => { if (confirm(`Remove "${r.title}" from the reading list?`)) onRemove(r.id); }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
 const ProjectsSection: React.FC = () => {
   const {
     projects,
     files,
     kanbanTasks,
+    readingList,
+    updateReadingItem,
+    removeReadingItem,
     selectedProjectId,
     setSelectedProjectId,
     deleteProject,
@@ -343,6 +409,12 @@ const ProjectsSection: React.FC = () => {
             </Card>
           </div>
         </div>
+
+        <ReadingList
+          items={readingList.filter((r) => r.projectId === selectedProj.id)}
+          onStatus={(id, status) => updateReadingItem(id, { status })}
+          onRemove={removeReadingItem}
+        />
 
         {isEditing && (
           <Modal

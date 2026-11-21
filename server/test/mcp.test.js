@@ -80,7 +80,7 @@ test('/mcp accepts the token as X-Chlio-Token too, with the same scope rules', a
     return c;
   };
   const rw = await connectWith({ 'X-Chlio-Token': rwToken() });
-  assert.equal((await rw.listTools()).tools.length, 26);
+  assert.equal((await rw.listTools()).tools.length, 30);
   const ro = await connectWith({ 'X-Chlio-Token': roToken() });
   assert.ok(!(await ro.listTools()).tools.some((t) => t.name === 'mindmap_create'), 'read-only scope applies via this header too');
   const post = (headers) => fetch(`${base}/mcp`, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', ...headers }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) });
@@ -93,13 +93,13 @@ test('/mcp accepts the token as X-Chlio-Token too, with the same scope rules', a
 test('tools: read-only tokens do not even see write tools; groups narrow the list', async () => {
   const rw = await connect(rwToken());
   const rwNames = (await rw.listTools()).tools.map((t) => t.name);
-  assert.equal(rwNames.length, 26, 'mindmaps 9 + planner 9 + notes 3 + jira 4 + search 1');
-  for (const n of ['mindmap_create', 'mindmap_add_nodes', 'task_create', 'note_create', 'jira_comment', 'chlio_search']) assert.ok(rwNames.includes(n), n);
+  assert.equal(rwNames.length, 30, 'mindmaps 9 + planner 9 + notes 3 + papers 4 + jira 4 + search 1');
+  for (const n of ['mindmap_create', 'mindmap_add_nodes', 'task_create', 'note_create', 'paper_add', 'papers_list', 'jira_comment', 'chlio_search']) assert.ok(rwNames.includes(n), n);
 
   const ro = await connect(roToken());
   const roNames = (await ro.listTools()).tools.map((t) => t.name);
-  assert.ok(roNames.includes('mindmap_get') && roNames.includes('chlio_search'));
-  for (const n of ['mindmap_create', 'mindmap_delete_board', 'task_create', 'task_delete', 'note_create', 'jira_create_issue', 'jira_transition']) assert.ok(!roNames.includes(n), `${n} hidden from read-only`);
+  assert.ok(roNames.includes('mindmap_get') && roNames.includes('chlio_search') && roNames.includes('papers_list'));
+  for (const n of ['mindmap_create', 'mindmap_delete_board', 'task_create', 'task_delete', 'note_create', 'paper_add', 'paper_update', 'paper_remove', 'jira_create_issue', 'jira_transition']) assert.ok(!roNames.includes(n), `${n} hidden from read-only`);
   assert.ok((await ro.callTool({ name: 'mindmap_create', arguments: { name: 'x', outline: '- a' } })).isError, 'calling a hidden write tool fails');
 
   const only = await connect(rwToken(), '?groups=search');
@@ -292,4 +292,83 @@ test('search finds node text, tasks, events and typed notes', async () => {
   assert.match(out(await call(c, 'chlio_search', { query: 'Line 70' })), /note text: Reading notes/);
   assert.match(out(await call(c, 'chlio_search', { query: 'zzzz-not-here' })), /Nothing in Chlio matches/);
   await c.close();
+});
+
+test('reading list: add papers to a project by name, dedupe, filter, update, remove', async () => {
+  const c = await connect(rwToken());
+  await call(c, 'project_create', { name: 'Ereuna' });
+  await call(c, 'project_create', { name: 'Other project' });
+  const pid = state().projects.find((p) => p.name === 'Ereuna').id;
+
+  const added = await call(c, 'paper_add', {
+    project: 'ereuna', // case-insensitive name, no id needed
+    papers: [
+      { title: 'Graph VQ-Transformer for molecule generation', authors: ['A. Author', 'B. Author'], year: 2025, doi: 'https://doi.org/10.1000/ABC.1', source: 'OpenAlex', abstract: 'We tokenise graphs.' },
+      { title: 'Attention Is All You Need', authors: 'Vaswani et al.', year: 2017, arxiv_id: 'arXiv:1706.03762v5', url: 'https://arxiv.org/abs/1706.03762', source: 'arXiv', tags: ['transformers'] },
+    ],
+  });
+  assert.ok(!added.isError, out(added));
+  assert.match(out(added), /Added 2 paper\(s\) to "Ereuna".*skipped 0/s);
+  let items = state().readingList;
+  assert.equal(items.length, 2);
+  assert.ok(items.every((r) => r.projectId === pid && r.status === 'to-read' && r.id.startsWith('paper-') && r.addedAt));
+  assert.equal(items[0].authors, 'A. Author, B. Author', 'author lists are joined');
+  assert.equal(items[0].doi, '10.1000/abc.1', 'DOI normalised (URL prefix and case stripped)');
+  assert.equal(items[1].arxivId, '1706.03762', 'arXiv id normalised (prefix and version stripped)');
+
+  // the same papers again, found through another database with differently written ids: nothing duplicated
+  const again = out(await call(c, 'paper_add', { project: pid, papers: [
+    { title: 'Some other title', doi: '10.1000/abc.1' },
+    { title: 'Attention is all you need!', authors: 'Vaswani' },
+    { title: 'A genuinely new paper', arxiv_id: '2501.00001' },
+  ] }));
+  assert.match(out({ content: [{ text: again }] }), /Added 1 paper\(s\).*skipped 2 duplicate/s);
+  assert.equal(state().readingList.length, 3);
+
+  // the same paper may sit on two different projects' lists
+  await call(c, 'paper_add', { project: 'Other project', papers: [{ title: 'Attention Is All You Need' }] });
+  assert.equal(state().readingList.length, 4);
+
+  // filters
+  assert.match(out(await call(c, 'papers_list', { project: 'Ereuna' })), /3 paper\(s\)/);
+  assert.match(out(await call(c, 'papers_list', { project: 'Ereuna', query: 'tokenise' })), /1 paper\(s\).*Graph VQ-Transformer/s);
+  assert.match(out(await call(c, 'papers_list', { query: 'transformers' })), /Attention Is All You Need/);
+
+  // update status/notes, move, and read-only visibility
+  const gvt = state().readingList.find((r) => r.title.startsWith('Graph VQ')).id;
+  assert.match(out(await call(c, 'paper_update', { paper_id: gvt, status: 'reading', notes: 'check the codebook ablation' })), /\[reading\]/);
+  assert.equal(state().readingList.find((r) => r.id === gvt).notes, 'check the codebook ablation');
+  assert.match(out(await call(c, 'papers_list', { project: 'Ereuna', status: 'reading' })), /1 paper\(s\)/);
+  await call(c, 'paper_update', { paper_id: gvt, notes: '' });
+  assert.equal(state().readingList.find((r) => r.id === gvt).notes, undefined, 'empty notes clears them');
+  await call(c, 'paper_update', { paper_id: gvt, project: 'Other project' });
+  assert.notEqual(state().readingList.find((r) => r.id === gvt).projectId, pid);
+
+  // search sees it
+  assert.match(out(await call(c, 'chlio_search', { query: 'codebook' })) + out(await call(c, 'chlio_search', { query: 'Graph VQ' })), /reading list:/);
+
+  // errors are explained, and nothing is saved on a failed call
+  const before = store.getStateRevision();
+  const bad = await call(c, 'paper_add', { project: 'No such project', papers: [{ title: 'x' }] });
+  assert.ok(bad.isError);
+  assert.match(out(bad), /Existing projects:.*Ereuna/);
+  const amb = await call(c, 'paper_add', { project: 'e', papers: [{ title: 'x' }] }); // matches Ereuna + "Other project"
+  assert.ok(amb.isError);
+  assert.match(out(amb), /several projects/);
+  assert.equal(store.getStateRevision(), before, 'failed calls change nothing');
+  assert.ok((await call(c, 'paper_update', { paper_id: 'nope', status: 'read' })).isError);
+
+  // limits: 50 per call
+  const tooMany = await c.callTool({ name: 'paper_add', arguments: { project: 'Ereuna', papers: Array.from({ length: 51 }, (_, i) => ({ title: `p${i}` })) } }).catch((e) => ({ isError: true, e }));
+  assert.ok(tooMany.isError || tooMany.e, 'more than 50 papers in one call is rejected');
+
+  // remove
+  const rm = out(await call(c, 'paper_remove', { paper_ids: [gvt] }));
+  assert.match(rm, /Removed 1 paper/);
+  assert.ok(!state().readingList.some((r) => r.id === gvt));
+  assert.ok((await call(c, 'paper_remove', { paper_ids: ['nope'] })).isError);
+
+  const ro = await connect(roToken());
+  assert.match(out(await call(ro, 'papers_list', { project: 'Ereuna' })), /paper\(s\)/);
+  await Promise.all([c.close(), ro.close()]);
 });

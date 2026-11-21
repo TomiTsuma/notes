@@ -21,7 +21,7 @@ export type Snapshot = Record<string, unknown>;
 type Entity = Record<string, unknown> & { id: string };
 
 /** Arrays of {id,...} objects, merged item by item. */
-const ENTITY_ARRAYS = new Set(['folders', 'files', 'papers', 'tags', 'projects', 'kanbanTasks', 'calendarEvents', 'mindMapBoards']);
+const ENTITY_ARRAYS = new Set(['folders', 'files', 'papers', 'readingList', 'tags', 'projects', 'kanbanTasks', 'calendarEvents', 'mindMapBoards']);
 /** Objects keyed by id (document/page id, project id) whose values are merged key by key. */
 const KEYED_MAPS = new Set(['annotations', 'chatHistory']);
 

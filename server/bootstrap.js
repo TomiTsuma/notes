@@ -15,7 +15,7 @@ import {
 const PERSIST_KEYS = [
   'activeTool', 'brushColor', 'brushSize',
   'folders', 'files', 'activeDocumentId', 'annotations',
-  'papers', 'tags', 'tagSearchQuery',
+  'papers', 'readingList', 'tags', 'tagSearchQuery',
   'nextcloudUrl', 'nextcloudUsername', 'nextcloudPapersPath', 'nextcloudSyncPath',
   'isRecording', 'showRightPanel',
   'activeView', 'selectedProjectId', 'currentBackground', 'theme',
